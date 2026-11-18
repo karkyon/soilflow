@@ -1,0 +1,522 @@
+// 自動生成（apps/api/scripts/gen-prisma-schema.ts）。手で直さない。DB の正本は prisma/migrations の SQL
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model AuditLog {
+  id BigInt @id @default(autoincrement())
+  occurredAt DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  userId String? @map("user_id") @db.Uuid
+  userName String? @map("user_name")
+  role String?
+  action String
+  targetType String @map("target_type")
+  targetId String? @map("target_id")
+  summary String
+  beforeData Json? @map("before_data")
+  afterData Json? @map("after_data")
+  reason String?
+  ip String? @db.Inet
+  requestId String? @map("request_id")
+  @@map("audit_logs")
+}
+
+model BillingParty {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+  kana String
+  honorific String @default(dbgenerated("'御中'::text"))
+  postalCode String? @map("postal_code")
+  address String?
+  mailTo String[] @default(dbgenerated("'{}'::text[]")) @map("mail_to")
+  mailCc String[] @default(dbgenerated("'{}'::text[]")) @map("mail_cc")
+  closingDay Int @default(0) @map("closing_day") @db.SmallInt
+  paymentMonthOffset Int @default(1) @map("payment_month_offset") @db.SmallInt
+  paymentDay Int @default(0) @map("payment_day") @db.SmallInt
+  freeePartnerId BigInt? @map("freee_partner_id")
+  freeePartnerName String? @map("freee_partner_name")
+  freeePartnerCode String? @map("freee_partner_code")
+  freeeMappingStatus String @default(dbgenerated("'UNMAPPED'::text")) @map("freee_mapping_status")
+  note String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("billing_parties")
+}
+
+model BillingRun {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  targetMonth String @map("target_month") @db.Char(7)
+  executedBy String @map("executed_by") @db.Uuid
+  executedAt DateTime @default(now()) @map("executed_at") @db.Timestamptz(6)
+  result Json
+  @@map("billing_runs")
+}
+
+model Customer {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String
+  kana String
+  defaultBillingPartyId String @map("default_billing_party_id") @db.Uuid
+  sortOrder Int @default(0) @map("sort_order")
+  note String?
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("customers")
+}
+
+model DailyReport {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reportDate DateTime @unique @map("report_date") @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@unique([id, reportDate])
+  @@map("daily_reports")
+}
+
+model FreeeApiLog {
+  id BigInt @id @default(autoincrement())
+  registrationId String? @map("registration_id") @db.Uuid
+  method String
+  path String
+  statusCode Int? @map("status_code") @db.SmallInt
+  durationMs Int? @map("duration_ms")
+  requestSummary Json? @map("request_summary")
+  responseSummary Json? @map("response_summary")
+  error String?
+  requestedBy String? @map("requested_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("freee_api_logs")
+}
+
+model FreeeConnection {
+  id Int @id @default(1) @db.SmallInt
+  status String @default(dbgenerated("'DISCONNECTED'::text"))
+  companyId BigInt? @map("company_id")
+  companyName String? @map("company_name")
+  authorizedFreeeUser String? @map("authorized_freee_user")
+  accessTokenEnc Bytes? @map("access_token_enc")
+  refreshTokenEnc Bytes? @map("refresh_token_enc")
+  kmsKeyVersion String? @map("kms_key_version")
+  accessTokenExpiresAt DateTime? @map("access_token_expires_at") @db.Timestamptz(6)
+  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz(6)
+  lastError String? @map("last_error")
+  registrationMode String @default(dbgenerated("'REVIEW'::text")) @map("registration_mode")
+  connectedAt DateTime? @map("connected_at") @db.Timestamptz(6)
+  connectedBy String? @map("connected_by") @db.Uuid
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("freee_connection")
+}
+
+model FreeeOauthState {
+  state String @id
+  codeVerifier String? @map("code_verifier")
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  usedAt DateTime? @map("used_at") @db.Timestamptz(6)
+  @@map("freee_oauth_states")
+}
+
+model FreeeRegistration {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId String @unique @map("invoice_id") @db.Uuid
+  action String @default(dbgenerated("'CREATE'::text"))
+  status String
+  reasons Json @default(dbgenerated("'[]'::jsonb"))
+  receiptId BigInt? @map("receipt_id")
+  dealId BigInt? @map("deal_id")
+  updateTargetDealId BigInt? @map("update_target_deal_id")
+  payload Json?
+  attempts Int @default(0) @db.SmallInt
+  nextAttemptAt DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  lastErrorCode String? @map("last_error_code")
+  lastErrorMessage String? @map("last_error_message")
+  requestedBy String? @map("requested_by") @db.Uuid
+  requestedAt DateTime? @map("requested_at") @db.Timestamptz(6)
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("freee_registrations")
+}
+
+model InvoiceCounter {
+  ym String @id @db.Char(4)
+  lastNo Int @map("last_no")
+  @@map("invoice_counters")
+}
+
+model InvoiceLine {
+  invoiceId String @map("invoice_id") @db.Uuid
+  lineNo Int @map("line_no") @db.SmallInt
+  siteId String? @map("site_id") @db.Uuid
+  siteName String? @map("site_name")
+  itemId String @map("item_id") @db.Uuid
+  itemName String @map("item_name")
+  vehicleClassId String @map("vehicle_class_id") @db.Uuid
+  vehicleClassName String @map("vehicle_class_name")
+  unitPrice Int @map("unit_price")
+  tripCount Int @map("trip_count")
+  amount BigInt
+
+  @@id([invoiceId, lineNo])
+  @@map("invoice_lines")
+}
+
+model InvoiceTrip {
+  invoiceId String @map("invoice_id") @db.Uuid
+  tripId String @map("trip_id") @db.Uuid
+  lineNo Int @map("line_no") @db.SmallInt
+  effectiveItemId String @map("effective_item_id") @db.Uuid
+  unitPrice Int @map("unit_price")
+
+  @@id([invoiceId, tripId])
+  @@map("invoice_trips")
+}
+
+model Invoice {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceNo String @unique @map("invoice_no")
+  billingPartyId String @map("billing_party_id") @db.Uuid
+  billingRunId String? @map("billing_run_id") @db.Uuid
+  periodFrom DateTime @map("period_from") @db.Date
+  periodTo DateTime @map("period_to") @db.Date
+  issueDate DateTime @map("issue_date") @db.Date
+  dueDate DateTime @map("due_date") @db.Date
+  billingPartyName String @map("billing_party_name")
+  billingPartyHonorific String @map("billing_party_honorific")
+  billingPartyPostal String? @map("billing_party_postal")
+  billingPartyAddress String? @map("billing_party_address")
+  subtotal BigInt
+  taxRate Int @map("tax_rate") @db.SmallInt
+  taxRounding String @map("tax_rounding")
+  taxAmount BigInt @map("tax_amount")
+  total BigInt
+  status String @default(dbgenerated("'DRAFT'::text"))
+  pdfObjectKey String? @map("pdf_object_key")
+  pdfSha256 String? @map("pdf_sha256")
+  replacesInvoiceId String? @map("replaces_invoice_id") @db.Uuid
+  confirmedAt DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  confirmedBy String? @map("confirmed_by") @db.Uuid
+  sentAt DateTime? @map("sent_at") @db.Timestamptz(6)
+  voidReason String? @map("void_reason")
+  voidedAt DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedBy String? @map("voided_by") @db.Uuid
+  createdBy String @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("invoices")
+}
+
+model Item {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reportLabel String @map("report_label")
+  priceItemName String @map("price_item_name")
+  direction String
+  pricePerM3Ref Int? @map("price_per_m3_ref")
+  smallVehicleFeeRef Int @default(0) @map("small_vehicle_fee_ref")
+  sortOrder Int @map("sort_order")
+  freeeAccountItemId BigInt? @map("freee_account_item_id")
+  freeeAccountItemName String? @map("freee_account_item_name")
+  freeeTaxCode Int? @map("freee_tax_code")
+  freeeTaxName String? @map("freee_tax_name")
+  freeeItemId BigInt? @map("freee_item_id")
+  freeeItemName String? @map("freee_item_name")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("items")
+}
+
+model Job {
+  id BigInt @id @default(autoincrement())
+  kind String
+  payload Json
+  dedupeKey String? @map("dedupe_key")
+  status String @default(dbgenerated("'QUEUED'::text"))
+  runAfter DateTime @default(now()) @map("run_after") @db.Timestamptz(6)
+  attempts Int @default(0) @db.SmallInt
+  maxAttempts Int @default(5) @map("max_attempts") @db.SmallInt
+  lockedAt DateTime? @map("locked_at") @db.Timestamptz(6)
+  lockedBy String? @map("locked_by")
+  lastError String? @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+  @@map("jobs")
+}
+
+model MailLog {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  invoiceId String @map("invoice_id") @db.Uuid
+  kind String
+  toAddresses String[] @map("to_addresses")
+  ccAddresses String[] @default(dbgenerated("'{}'::text[]")) @map("cc_addresses")
+  subject String
+  body String
+  attachmentName String @map("attachment_name")
+  attachmentSha256 String @map("attachment_sha256")
+  providerMessageId String? @map("provider_message_id")
+  status String @default(dbgenerated("'QUEUED'::text"))
+  errorMessage String? @map("error_message")
+  requestedBy String @map("requested_by") @db.Uuid
+  requestedAt DateTime @default(now()) @map("requested_at") @db.Timestamptz(6)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(6)
+  @@map("mail_logs")
+}
+
+model MarkRule {
+  markId String @map("mark_id") @db.Uuid
+  fromItemId String @map("from_item_id") @db.Uuid
+  toItemId String @map("to_item_id") @db.Uuid
+
+  @@id([markId, fromItemId])
+  @@map("mark_rules")
+}
+
+model Mark {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  symbol String
+  displayName String @map("display_name")
+  color String
+  sortOrder Int @map("sort_order")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("marks")
+}
+
+model MfaCode {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId String @map("user_id") @db.Uuid
+  codeHash String @map("code_hash")
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  usedAt DateTime? @map("used_at") @db.Timestamptz(6)
+  attempts Int @default(0) @db.SmallInt
+  @@map("mfa_codes")
+}
+
+model PriceTableEntry {
+  priceTableId String @map("price_table_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  vehicleClassId String @map("vehicle_class_id") @db.Uuid
+  unitPrice Int @map("unit_price")
+
+  @@id([priceTableId, itemId, vehicleClassId])
+  @@map("price_table_entries")
+}
+
+model PriceTable {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  effectiveFrom DateTime @unique @map("effective_from") @db.Date
+  note String?
+  createdBy String? @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  @@map("price_tables")
+}
+
+model ReportRow {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dailyReportId String @map("daily_report_id") @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  siteId String? @map("site_id") @db.Uuid
+  vehicleId String @map("vehicle_id") @db.Uuid
+  itemId String @map("item_id") @db.Uuid
+  vehicleClassId String @map("vehicle_class_id") @db.Uuid
+  sortOrder Int @map("sort_order")
+  carriedFromRowId String? @map("carried_from_row_id") @db.Uuid
+  createdBy String @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("report_rows")
+}
+
+model Session {
+  id String @id
+  userId String @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+  idleTimeout Unsupported("interval") @map("idle_timeout")
+  mfaPassed Boolean @default(false) @map("mfa_passed")
+  ip String? @db.Inet
+  userAgent String? @map("user_agent")
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  @@map("sessions")
+}
+
+model Setting {
+  id Int @id @default(1) @db.SmallInt
+  companyName String @map("company_name")
+  officeName String @map("office_name")
+  postalCode String? @map("postal_code")
+  address String?
+  tel String?
+  fax String?
+  invoiceRegistrationNo String? @map("invoice_registration_no")
+  bankAccountText String? @map("bank_account_text")
+  invoiceNote String? @map("invoice_note")
+  mailFromAddress String? @map("mail_from_address")
+  mailFromName String? @map("mail_from_name")
+  mailReplyTo String? @map("mail_reply_to")
+  mailSubjectTemplate String @default(dbgenerated("'【{company}】{year}年{month}月分 ご請求書（{billing_party}様）'::text")) @map("mail_subject_template")
+  mailBodyTemplate String @map("mail_body_template")
+  reportFirstHour Int @default(7) @map("report_first_hour") @db.SmallInt
+  reportLastHour Int @default(16) @map("report_last_hour") @db.SmallInt
+  taxRate Int @default(10) @map("tax_rate") @db.SmallInt
+  taxRounding String @default(dbgenerated("'floor'::text")) @map("tax_rounding")
+  slipWarningEnabled Boolean @default(true) @map("slip_warning_enabled")
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  updatedBy String? @map("updated_by") @db.Uuid
+  version Int @default(1)
+  @@map("settings")
+}
+
+model Site {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  name String
+  kana String
+  defaultBillingPartyId String? @map("default_billing_party_id") @db.Uuid
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@unique([id, customerId])
+  @@map("sites")
+}
+
+model SlipCounter {
+  slipDate DateTime @id @map("slip_date") @db.Date
+  lastNo Int @map("last_no")
+  @@map("slip_counters")
+}
+
+model SlipLine {
+  slipId String @map("slip_id") @db.Uuid
+  lineNo Int @map("line_no") @db.SmallInt
+  itemId String @map("item_id") @db.Uuid
+  vehicleClassId String @map("vehicle_class_id") @db.Uuid
+  itemLabel String @map("item_label")
+  tripCount Int @map("trip_count")
+  vehicleNos String @map("vehicle_nos")
+
+  @@id([slipId, lineNo])
+  @@map("slip_lines")
+}
+
+model Slip {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  slipNo String @unique @map("slip_no")
+  slipDate DateTime @map("slip_date") @db.Date
+  customerId String @map("customer_id") @db.Uuid
+  siteId String? @map("site_id") @db.Uuid
+  addresseeName String @map("addressee_name")
+  siteName String? @map("site_name")
+  billingPartyId String @map("billing_party_id") @db.Uuid
+  defaultBillingPartyId String @map("default_billing_party_id") @db.Uuid
+  billingChangeReason String? @map("billing_change_reason")
+  status String @default(dbgenerated("'DRAFT'::text"))
+  terminalUserId String? @map("terminal_user_id") @db.Uuid
+  sentToTerminalAt DateTime? @map("sent_to_terminal_at") @db.Timestamptz(6)
+  signatureObjectKey String? @map("signature_object_key")
+  signerName String? @map("signer_name")
+  signedAt DateTime? @map("signed_at") @db.Timestamptz(6)
+  pdfObjectKey String? @map("pdf_object_key")
+  pdfSha256 String? @map("pdf_sha256")
+  paperScanObjectKey String? @map("paper_scan_object_key")
+  paperRegisteredAt DateTime? @map("paper_registered_at") @db.Timestamptz(6)
+  paperRegisteredBy String? @map("paper_registered_by") @db.Uuid
+  cancelReason String? @map("cancel_reason")
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy String? @map("cancelled_by") @db.Uuid
+  createdBy String @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("slips")
+}
+
+model Trip {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dailyReportId String @map("daily_report_id") @db.Uuid
+  tripDate DateTime @map("trip_date") @db.Date
+  reportRowId String @map("report_row_id") @db.Uuid
+  tripTime DateTime @map("trip_time") @db.Time(0)
+  markId String? @map("mark_id") @db.Uuid
+  effectiveItemId String @map("effective_item_id") @db.Uuid
+  convoyId String? @map("convoy_id") @db.Uuid
+  slipId String? @map("slip_id") @db.Uuid
+  invoiceId String? @map("invoice_id") @db.Uuid
+  status String @default(dbgenerated("'ACTIVE'::text"))
+  cancelReason String? @map("cancel_reason")
+  cancelledAt DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledBy String? @map("cancelled_by") @db.Uuid
+  clientOpId String @unique @map("client_op_id") @db.Uuid
+  createdBy String @map("created_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("trips")
+}
+
+model User {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  loginId String @unique @map("login_id")
+  name String
+  role String
+  email String?
+  passwordHash String @map("password_hash")
+  mfaEnabled Boolean @default(false) @map("mfa_enabled")
+  pairedTerminalId String? @map("paired_terminal_id") @db.Uuid
+  failedLoginCount Int @default(0) @map("failed_login_count") @db.SmallInt
+  lockedUntil DateTime? @map("locked_until") @db.Timestamptz(6)
+  passwordChangedAt DateTime @default(now()) @map("password_changed_at") @db.Timestamptz(6)
+  mustChangePassword Boolean @default(true) @map("must_change_password")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("users")
+}
+
+model VehicleClass {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name String @unique
+  capacityM3 Decimal @map("capacity_m3") @db.Decimal(4, 2)
+  smallVehicle Boolean @default(false) @map("small_vehicle")
+  sortOrder Int @map("sort_order")
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("vehicle_classes")
+}
+
+model Vehicle {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  customerId String @map("customer_id") @db.Uuid
+  vehicleNo String @map("vehicle_no")
+  defaultVehicleClassId String? @map("default_vehicle_class_id") @db.Uuid
+  active Boolean @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@unique([customerId, vehicleNo])
+  @@unique([id, customerId])
+  @@map("vehicles")
+}

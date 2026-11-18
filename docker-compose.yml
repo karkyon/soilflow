@@ -1,0 +1,12 @@
+# ローカルの開発用（14 7章）。docker compose up -d db
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: soilflow
+    ports: ["5432:5432"]
+    volumes: [db:/var/lib/postgresql/data, ./infra/db-init:/docker-entrypoint-initdb.d:ro]
+volumes:
+  db: {}

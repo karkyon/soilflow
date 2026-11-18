@@ -1,0 +1,6 @@
+**/node_modules
+**/dist
+**/.storage
+**/.env
+apps/api/src/generated
+.git

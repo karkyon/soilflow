@@ -1,0 +1,8 @@
+{
+  "name": "@soilflow/billing",
+  "version": "1.0.0",
+  "private": true,
+  "main": "billing.js",
+  "types": "billing.d.ts",
+  "scripts": { "test": "node billing.test.js" }
+}
