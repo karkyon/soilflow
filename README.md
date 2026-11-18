@@ -63,7 +63,7 @@ soilflow/
 ```bash
 docker compose up -d db          # PostgreSQL 16
 pnpm install
-pnpm --filter api migrate && pnpm --filter api seed   # 初期の管理者（SEED_ADMIN_* 未設定なら仮パスワードを表示）
+pnpm --filter api db:migrate && pnpm --filter api db:seed   # 初期の管理者（SEED_ADMIN_* 未設定なら仮パスワードを表示）
 pnpm --filter api dev            # API  http://localhost:4000/api/v1
 pnpm --filter web dev            # 画面 http://localhost:3000 （/api は API へ転送）
 ```
