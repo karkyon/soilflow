@@ -12,7 +12,9 @@ on:
   workflow_dispatch:
     inputs:
       env: { description: 'stg / prod', required: true, default: stg }
-concurrency: { group: deploy-${{ github.event.inputs.env || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'stg' }}, cancel-in-progress: false }
+concurrency:
+  group: deploy-${{ github.event.inputs.env || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'stg' }}
+  cancel-in-progress: false
 permissions: { contents: read, id-token: write }
 jobs:
   deploy:
