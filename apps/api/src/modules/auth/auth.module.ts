@@ -31,7 +31,8 @@ class RateLimiter {
   }
   reset() { this.hits.clear(); }
 }
-export const loginLimiter = new RateLimiter(10);
+/** ログインの回数の上限（1分あたり・IP ごと。ST-02）。E2E だけ LOGIN_RATE_PER_MIN で上げる */
+export const loginLimiter = new RateLimiter(Number(process.env.LOGIN_RATE_PER_MIN ?? 10));
 // 失敗が1時間に20回を超えたら知らせる（13 8章）。Cloud Logging のアラートで拾う
 const failureWindow: number[] = [];
 

@@ -81,7 +81,8 @@ export class FakeFreee implements FreeeAdapter {
   /** 事業所を決めずに許可されたことにする（COMPANY_REQUIRED の試験） */
   omitCompanyId = false;
 
-  authorizeUrl(state: string) { return `${config.freeeAuthBase}/public_api/authorize?response_type=code&client_id=fake&state=${state}&prompt=select_company`; }
+  /** にせもの：freee の画面を通らず、すぐ戻り先へ（ローカル・E2E で連携の流れを試すため） */
+  authorizeUrl(state: string) { return `${config.publicBaseUrl}/api/v1/freee/oauth/callback?code=fake-code&state=${state}`; }
   private issue(): FreeeTokenResponse {
     const rt = randomBytes(16).toString('hex'); this.refreshTokens.add(rt);
     return { access_token: `at-${randomBytes(8).toString('hex')}`, refresh_token: rt, expires_in: 21600, token_type: 'bearer', company_id: this.omitCompanyId ? null : this.companies[0].id };

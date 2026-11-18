@@ -60,7 +60,7 @@ export function RowDialog({ open, onClose, date, row, draft, onSaved, onDeleted 
           <Button onClick={onClose}>閉じる</Button><Button kind="primary" busy={busy} onClick={save}>{row ? '直す' : '追加する'}</Button>
         </>}>
         <div className="space-y-4">
-          <Field label="会社名（客先）" required>
+          <Field label="会社名（客先）" required group>
             <div className="mb-2 flex flex-wrap gap-1">
               <button type="button" onClick={() => setKana(null)} className={cx('h-8 min-w-9 rounded border px-2 text-sm', !kana ? 'border-gold bg-gold text-white' : 'border-line bg-white')}>全部</button>
               {KANA_ROWS.map((k) => <button type="button" key={k} onClick={() => setKana(k)} className={cx('h-8 min-w-9 rounded border px-2 text-sm', kana === k ? 'border-gold bg-gold text-white' : 'border-line bg-white')}>{k}</button>)}

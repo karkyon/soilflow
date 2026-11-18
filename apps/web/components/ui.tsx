@@ -44,15 +44,15 @@ export const FREEE_STATUS: Record<string, [string, Tone]> = {
 export const StatusPill = ({ map, value }: { map: Record<string, [string, Tone]>; value: string | null | undefined }) => (value && map[value] ? <Pill tone={map[value][1]}>{map[value][0]}</Pill> : <span className="text-gray-400">—</span>);
 
 /* ---------------------------------------------------------------- 入力 */
-export function Field({ label, error, hint, children, required }: { label: string; error?: string | null; hint?: ReactNode; children: ReactNode; required?: boolean }) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-[13px] font-bold text-navy">{label}{required && <span className="ml-1 text-err">*</span>}</span>
-      {children}
-      {hint && !error && <span className="mt-1 block text-xs text-gray-500">{hint}</span>}
-      {error && <span className="mt-1 block text-xs font-bold text-err" role="alert">{error}</span>}
-    </label>
-  );
+/** 入力1つは label で包む。ボタンの並び（客先の選択など）は group にする（ボタンの名前に見出しが混ざらないように） */
+export function Field({ label, error, hint, children, required, group }: { label: string; error?: string | null; hint?: ReactNode; children: ReactNode; required?: boolean; group?: boolean }) {
+  const body = <>
+    <span className="mb-1 block text-[13px] font-bold text-navy">{label}{required && <span className="ml-1 text-err">*</span>}</span>
+    {children}
+    {hint && !error && <span className="mt-1 block text-xs text-gray-500">{hint}</span>}
+    {error && <span className="mt-1 block text-xs font-bold text-err" role="alert">{error}</span>}
+  </>;
+  return group ? <div role="group" aria-label={label} className="block">{body}</div> : <label className="block">{body}</label>;
 }
 export const inputCls = 'h-9 w-full rounded-md border border-line bg-white px-2.5 text-sm focus:border-gold focus:outline-none disabled:bg-gray-100';
 export const Input = (p: React.InputHTMLAttributes<HTMLInputElement>) => <input {...p} className={cx(inputCls, p.className)} />;
@@ -117,7 +117,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastCtx.Provider value={push}>
       {children}
       <div className="no-print pointer-events-none fixed inset-x-0 bottom-6 z-[60] flex flex-col items-center gap-2" aria-live="polite">
-        {items.map((t) => <div key={t.id} className={cx('pointer-events-auto rounded-lg border px-5 py-2.5 text-sm font-bold shadow-lg', TONE[t.tone])}>{t.text}</div>)}
+        {items.map((t) => <div key={t.id} role="status" className={cx('pointer-events-auto rounded-lg border px-5 py-2.5 text-sm font-bold shadow-lg', TONE[t.tone])}>{t.text}</div>)}
       </div>
     </ToastCtx.Provider>
   );

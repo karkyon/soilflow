@@ -12,13 +12,13 @@ interface Unslipped { customerId: string; customerName: string; siteId: string |
 
 export function SlipDialog({ open, onClose, report, onDone }: { open: boolean; onClose: () => void; report: Report; onDone: () => void }) {
   const toast = useToast(); const qc = useQueryClient();
-  const list = useQuery({ queryKey: ['unslipped', report.date, open], enabled: open, queryFn: () => api.get<{ unslipped: Unslipped[] }>('/slips', { date: report.date }) });
+  const list = useQuery({ queryKey: ['unslipped', report.date], enabled: open, staleTime: 0, gcTime: 0, refetchOnMount: 'always', queryFn: () => api.get<{ unslipped: Unslipped[] }>('/slips', { date: report.date }) });
   const customers = useMaster<Customer>('customers'); const sites = useMaster<Site>('sites'); const bps = useMaster<BillingParty>('billingParties');
   const items = useMaster<Item>('items'); const vcs = useMaster<VehicleClass>('vehicleClasses');
   const [sel, setSel] = useState<Unslipped | null>(null); const [bpId, setBpId] = useState(''); const [reason, setReason] = useState('');
   const [busy, setBusy] = useState<string | null>(null); const [err, setErr] = useState<string | null>(null);
 
-  useEffect(() => { if (open) { setSel(null); setErr(null); } }, [open]);
+  useEffect(() => { if (open) { setSel(null); setErr(null); void list.refetch(); } }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
   const def = useMemo(() => {
     if (!sel) return null;
     const site = sites.data?.find((s) => s.id === sel.siteId); const cust = customers.data?.find((c) => c.id === sel.customerId);
@@ -57,7 +57,7 @@ export function SlipDialog({ open, onClose, report, onDone }: { open: boolean; o
         if (w) w.location.href = f.url;
         toast(`伝票 ${slip.slipNo} を紙伝票で印刷します`);
       }
-      qc.invalidateQueries({ queryKey: ['slips'] });
+      qc.invalidateQueries({ queryKey: ['slips'] }); qc.removeQueries({ queryKey: ['unslipped'] });
       onDone(); onClose();
     } catch (e) { setErr(errMsg(e)); } finally { setBusy(null); }
   };
