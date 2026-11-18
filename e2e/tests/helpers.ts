@@ -24,3 +24,14 @@ export async function newUser(browser: Browser, loginId: string, landing: RegExp
 }
 
 export const toast = (page: Page, text: string | RegExp) => expect(page.getByRole('status').filter({ hasText: text }).first()).toBeVisible();
+
+/** 新しいタブで PDF（署名付き URL）が開くことを確かめる。PDF の表示がないブラウザではダウンロードになるため、要求と中身で見る */
+export async function expectPdfOpened(page: Page, trigger: () => Promise<unknown>) {
+  const ctx = page.context();
+  const [req] = await Promise.all([ctx.waitForEvent('request', (r) => /\/api\/v1\/files\//.test(r.url())), trigger()]);
+  const res = await page.request.get(req.url());
+  expect(res.status()).toBe(200);
+  expect(res.headers()['content-type']).toBe('application/pdf');
+  expect((await res.body()).subarray(0, 5).toString()).toBe('%PDF-');
+  for (const p of ctx.pages()) if (p !== page && p.url() !== 'about:blank' ? /\/api\/v1\/files\//.test(p.url()) : p !== page) await p.close().catch(() => undefined);
+}

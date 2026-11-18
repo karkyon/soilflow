@@ -1,6 +1,6 @@
 /* E2E-01〜08（15 2.5）。受付 → 伝票・サイン → 紙伝票・スキャン → 締め → 確認 → メール → freee → 取消して再発行 → オフライン */
 import { expect, Page, test } from '@playwright/test';
-import { lastMonth, login, newUser, toast } from './helpers';
+import { expectPdfOpened, lastMonth, login, newUser, toast } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -70,9 +70,7 @@ test('E2E-02 伝票の発行 → タブレットでサイン → 控えの印刷
 
   const done = dialog(reception);
   await expect(done.getByText('サインが確定しました')).toBeVisible({ timeout: 15_000 });
-  const [pdf] = await Promise.all([reception.context().waitForEvent('page'), done.getByRole('button', { name: 'お客さま控えを印刷' }).click()]);
-  await pdf.waitForURL(/\/api\/v1\/files\//);
-  await pdf.close();
+  await expectPdfOpened(reception, () => done.getByRole('button', { name: 'お客さま控えを印刷' }).click());
   await tablet.context().close();
 });
 
@@ -86,9 +84,8 @@ test('E2E-03・04 請求先の選び直し（ケースD）→ 紙伝票 → 本�
   await d.getByLabel('請求先').selectOption({ label: '岡山土建' });
   await expect(d.getByText('既定から変えています')).toBeVisible();
   await d.getByLabel('変更の理由（任意）').fill('元請へ請求');
-  const [paper] = await Promise.all([reception.context().waitForEvent('page'), d.getByRole('button', { name: '紙伝票で印刷' }).click()]);
+  await expectPdfOpened(reception, () => d.getByRole('button', { name: '紙伝票で印刷' }).click());
   await toast(reception, /を紙伝票で印刷します/);
-  await paper.waitForURL(/\/api\/v1\/files\//); await paper.close();
 
   const office = await newUser(browser, 'office', /\/office\/$/);
   await office.getByRole('link', { name: '伝票', exact: true }).click();
@@ -171,7 +168,7 @@ test('E2E-06 管理者：freee と連携 → 要対応の対応付け → 登録
 test('E2E-07 取消して再発行', async ({ page }) => {
   await login(page, 'office', /\/office\/$/);
   await page.goto('/office/billing/');
-  await page.locator('tbody tr').filter({ hasText: 'かや工業' }).getByRole('link').click();
+  await page.locator('tbody tr').filter({ hasText: 'かや工業' }).getByRole('link', { name: /^SF-/ }).click();
   await expect(page).toHaveURL(/\/office\/invoice\/\?id=/);
   const oldUrl = page.url();
   await page.getByRole('button', { name: '取消して再発行' }).click();

@@ -10,7 +10,8 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   expect: { timeout: 10_000 },
-  retries: process.env.CI ? 1 : 0,
+  // 1本の流れで状態を引き継ぐため、やり直しはしない
+  retries: 0,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   globalSetup: './global-setup.ts',
   use: {
