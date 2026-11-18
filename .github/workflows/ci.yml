@@ -25,3 +25,5 @@ jobs:
       - run: pnpm --filter @soilflow/billing test
       - run: pnpm --filter api test
       - run: pnpm --filter api build
+      - run: pnpm --filter web gen:api && git diff --exit-code apps/web/lib/api/schema.d.ts
+      - run: pnpm --filter web build

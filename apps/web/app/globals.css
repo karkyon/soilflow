@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* 05 画面設計書 1.2 の色（紺・金・生成り） */
+@theme {
+  --color-navy: #16213C;
+  --color-navy-2: #24304f;
+  --color-gold: #B8862E;
+  --color-gold-dark: #96701F;
+  --color-gold-pale: #FBF6EA;
+  --color-cream: #F7F5EF;
+  --color-line: #DDD8CB;
+  --color-kusa: #2C6E3F;
+  --color-kusa-bg: #E1EFE4;
+  --color-maru: #8A5A3C;
+  --color-maru-bg: #F1E4D9;
+  --color-ok: #1F6F4A;
+  --color-ok-bg: #E2F1E8;
+  --color-warn: #8F5900;
+  --color-warn-bg: #FFF3CF;
+  --color-err: #B23A3A;
+  --color-err-bg: #FBE5E5;
+  --color-info: #245C96;
+  --color-info-bg: #E3EDF8;
+  --color-freee: #2864F0;
+  --font-sans: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
+}
+
+html, body { background: var(--color-cream); color: #1c2333; font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--color-gold); outline-offset: 2px; }
+table.grid-table { border-collapse: separate; border-spacing: 0; }
+@media print { .no-print { display: none !important; } }
