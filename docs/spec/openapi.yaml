@@ -1,0 +1,1457 @@
+openapi: 3.1.0
+info:
+  title: SoilFlow API
+  version: 1.0.0
+  description: |
+    SoilFlow 受入・請求管理システムの API 契約の正本（08 API設計書）。
+    - ベースパス `/api/v1`。画面と同じドメイン（Firebase Hosting から Cloud Run へ転送）。
+    - 認証は Cookie `__session`（HttpOnly・Secure・SameSite=Lax）。更新系は `X-CSRF-Token` ヘッダが必須。
+    - 日付は `YYYY-MM-DD`、時刻は `HH:MM`、日時は ISO 8601（+09:00）。金額は整数（円）。
+    - 更新系で同時更新を検出する対象は `version` を送る。合わなければ 409 `CONFLICT`。
+    - 各操作の `x-roles` は呼び出せる利用者区分（RECEPTION・SIGN_TERMINAL・OFFICE・ADMIN）。
+servers:
+  - url: /api/v1
+tags:
+  - { name: auth, description: ログイン・セッション }
+  - { name: reports, description: 受入日報・行・便（FR-RCV） }
+  - { name: slips, description: 伝票（FR-SLP） }
+  - { name: terminal, description: サイン端末（FR-SGN） }
+  - { name: aggregates, description: 集計・状況（FR-AGG） }
+  - { name: billing, description: 締め・請求書（FR-BIL） }
+  - { name: mail, description: メール送信（FR-MAL） }
+  - { name: freee, description: freee会計連携（FR-FRE） }
+  - { name: masters, description: マスタ（FR-MST） }
+  - { name: admin, description: 利用者・操作履歴・設定（FR-CMN） }
+  - { name: internal, description: Cloud Scheduler からの呼び出し }
+security:
+  - session: []
+
+paths:
+  # ------------------------------------------------------------------ auth
+  /auth/login:
+    post:
+      tags: [auth]
+      operationId: login
+      summary: ログイン（FR-CMN-01）
+      security: []
+      x-roles: [ANY]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [loginId, password]
+              properties:
+                loginId: { type: string, maxLength: 40 }
+                password: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: ログイン成功。2段階の確認が必要なら mfaRequired=true（Cookie は仮のセッション）
+          headers:
+            Set-Cookie: { schema: { type: string }, description: '__session=…; HttpOnly; Secure; SameSite=Lax; Path=/' }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [mfaRequired]
+                properties:
+                  mfaRequired: { type: boolean }
+                  me: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '423':
+          description: 5回続けて失敗したため15分ロック（ACCOUNT_LOCKED）
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+  /auth/mfa:
+    post:
+      tags: [auth]
+      operationId: verifyMfa
+      summary: 2段階の確認コードの確認（管理者、NFR-12）
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [code], properties: { code: { type: string, pattern: '^[0-9]{6}$' } } } } }
+      responses:
+        '200': { description: 確認済み, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/logout:
+    post:
+      tags: [auth]
+      operationId: logout
+      summary: ログアウト
+      x-roles: [ANY]
+      responses:
+        '204': { description: ログアウトした }
+  /auth/me:
+    get:
+      tags: [auth]
+      operationId: getMe
+      summary: ログイン中の利用者と CSRF トークン
+      x-roles: [ANY]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Me' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/password:
+    post:
+      tags: [auth]
+      operationId: changePassword
+      summary: 自分のパスワードの変更（12文字以上）
+      x-roles: [ANY]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [current, next], properties: { current: { type: string }, next: { type: string, minLength: 12 } } } } }
+      responses:
+        '204': { description: 変更した }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ------------------------------------------------------------------ reports
+  /daily-reports/{date}:
+    get:
+      tags: [reports]
+      operationId: getDailyReport
+      summary: 日報（行・便・台数）。なければ作る（FR-RCV-01・02・16）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Date' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/DailyReport' } } } }
+  /daily-reports/{date}/changes:
+    get:
+      tags: [reports]
+      operationId: getDailyReportChanges
+      summary: 前回のカーソル以降に変わった行・便（FR-RCV-17、04 3.3）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters:
+        - { $ref: '#/components/parameters/Date' }
+        - { name: since, in: query, required: true, schema: { type: string }, description: 前回の応答の cursor }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cursor, rows, trips, counts]
+                properties:
+                  cursor: { type: string }
+                  rows: { type: array, items: { $ref: '#/components/schemas/ReportRow' } }
+                  trips: { type: array, items: { $ref: '#/components/schemas/Trip' } }
+                  counts: { $ref: '#/components/schemas/TripCounts' }
+  /daily-reports/{date}/carry-over:
+    get:
+      tags: [reports]
+      operationId: getCarryOverCandidates
+      summary: 前の営業日に便があった行の一覧（FR-RCV-06）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Date' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { fromDate: { type: string, format: date }, rows: { type: array, items: { $ref: '#/components/schemas/ReportRow' } } } } } } }
+    post:
+      tags: [reports]
+      operationId: carryOver
+      summary: 選んだ行を引き継ぐ
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Date' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [rowIds], properties: { rowIds: { type: array, items: { type: string, format: uuid }, minItems: 1 } } } } }
+      responses:
+        '201': { description: 作った行, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ReportRow' } } } } }
+  /daily-reports/{date}/pdf:
+    get:
+      tags: [reports]
+      operationId: getDailyReportPdf
+      summary: 日報の PDF（RPT-01）の署名付き URL
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Date' } ]
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+  /report-rows:
+    post:
+      tags: [reports]
+      operationId: createReportRow
+      summary: 行の追加・車番の追加（FR-RCV-04・05）。新しい車番は vehicleNo で送ると車番マスタに登録する
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/ReportRowInput' } } }
+      responses:
+        '201': { description: 作った行, content: { application/json: { schema: { $ref: '#/components/schemas/ReportRow' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /report-rows/{id}:
+    patch:
+      tags: [reports]
+      operationId: updateReportRow
+      summary: 行の修正（FR-RCV-15）。ロックされていない便の品目を計算し直す
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ReportRowInput'
+                - type: object
+                  required: [version]
+                  properties: { version: { type: integer } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/ReportRow' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+    delete:
+      tags: [reports]
+      operationId: deleteReportRow
+      summary: 行の削除（有効な便がある行は不可）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '204': { description: 削除した }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /trips:
+    post:
+      tags: [reports]
+      operationId: createTrips
+      summary: 便の記入（1行または車列）（FR-RCV-07・08・12）
+      description: |
+        `rowIds` が2件以上なら同じ時刻で車列として記入する。`time` を省くとサーバーで現在時刻を使う（PC の時刻との差が5分以内なら clientTime を使う）。
+        `clientOpId` が保存済みなら 200 で保存済みの便を返す（二重保存しない）。
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, rowIds, clientOpId]
+              properties:
+                date: { type: string, format: date }
+                rowIds: { type: array, items: { type: string, format: uuid }, minItems: 1, maxItems: 30 }
+                time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$', description: 過去の時間帯に記入するとき（FR-RCV-08） }
+                clientTime: { type: string, format: date-time, description: クリックした瞬間の PC の時刻 }
+                clientOpId: { type: string, format: uuid }
+      responses:
+        '200': { description: 保存済み（同じ clientOpId）, content: { application/json: { schema: { $ref: '#/components/schemas/TripsCreated' } } } }
+        '201': { description: 作った便, content: { application/json: { schema: { $ref: '#/components/schemas/TripsCreated' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /trips/{id}:
+    patch:
+      tags: [reports]
+      operationId: updateTrip
+      summary: 便の時刻・印の変更（FR-RCV-10・13）。applyToConvoy=true で車列の全部の便に同じ印
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: integer }
+                time: { type: string, pattern: '^([01][0-9]|2[0-3]):[0-5][0-9]$' }
+                markId: { type: [string, 'null'], format: uuid }
+                applyToConvoy: { type: boolean, default: true }
+      responses:
+        '200': { description: 変わった便（車列を含む）, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Trip' } } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /trips/{id}/cancel:
+    post:
+      tags: [reports]
+      operationId: cancelTrip
+      summary: 便の取消（記録は残る）（FR-RCV-13）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer }, reason: { type: string, maxLength: 200 } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Trip' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # ------------------------------------------------------------------ slips
+  /slips:
+    get:
+      tags: [slips]
+      operationId: listSlips
+      summary: 伝票の一覧（受付は当日、本社は期間）（FR-SLP-12）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters:
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/SlipStatus' } }
+        - { name: customerId, in: query, schema: { type: string, format: uuid } }
+        - { name: since, in: query, schema: { type: string }, description: 変わった伝票だけ（サイン完了の通知用） }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, cursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Slip' } }
+                  unslipped: { type: array, description: 伝票未発行の便がある客先・現場, items: { type: object, properties: { customerId: { type: string, format: uuid }, customerName: { type: string }, siteId: { type: [string, 'null'], format: uuid }, siteName: { type: [string, 'null'] }, tripCount: { type: integer } } } }
+                  cursor: { type: string }
+    post:
+      tags: [slips]
+      operationId: createSlip
+      summary: 伝票の発行（FR-SLP-01〜04）。tripIds を省くとその客先・現場の未発行の便すべて
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, customerId]
+              properties:
+                date: { type: string, format: date }
+                customerId: { type: string, format: uuid }
+                siteId: { type: [string, 'null'], format: uuid }
+                tripIds: { type: array, items: { type: string, format: uuid } }
+                billingPartyId: { type: string, format: uuid, description: 既定と違う請求先にするとき }
+                billingChangeReason: { type: string, maxLength: 200 }
+      responses:
+        '201': { description: 作った伝票, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /slips/{id}:
+    get:
+      tags: [slips]
+      operationId: getSlip
+      summary: 伝票の詳細
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+    patch:
+      tags: [slips]
+      operationId: updateSlipBillingParty
+      summary: 請求先の変更（DRAFT・AWAITING_SIGNATURE のとき）（FR-SLP-04）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version, billingPartyId], properties: { version: { type: integer }, billingPartyId: { type: string, format: uuid }, billingChangeReason: { type: string, maxLength: 200 } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /slips/{id}/send-to-terminal:
+    post:
+      tags: [slips]
+      operationId: sendSlipToTerminal
+      summary: サイン用タブレットへ送る（FR-SLP-05）。terminalId を省くと利用者の対の端末
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { terminalId: { type: string, format: uuid } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+        '409': { description: その端末に別のサイン待ちがある（TERMINAL_BUSY）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+  /slips/{id}/withdraw:
+    post:
+      tags: [slips]
+      operationId: withdrawSlip
+      summary: タブレットへの送信を取りやめる（FR-SGN-05）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+  /slips/{id}/print-paper:
+    post:
+      tags: [slips]
+      operationId: printPaperSlip
+      summary: 紙伝票（サイン欄が空、RPT-04）に切り替えて印刷用の URL を返す（FR-SLP-11）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+  /slips/{id}/paper-scan:
+    post:
+      tags: [slips]
+      operationId: registerPaperScan
+      summary: 紙伝票のスキャン PDF を登録（FR-SLP-11）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [file], properties: { file: { type: string, contentMediaType: application/pdf, description: 20MB まで } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /slips/{id}/cancel:
+    post:
+      tags: [slips]
+      operationId: cancelSlip
+      summary: 伝票の取消（理由必須）（FR-SLP-10）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version, reason], properties: { version: { type: integer }, reason: { type: string, minLength: 1, maxLength: 200 } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Slip' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /slips/{id}/pdf:
+    get:
+      tags: [slips]
+      operationId: getSlipPdf
+      summary: 伝票の PDF（サイン入り RPT-02/03、紙伝票のスキャン）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters:
+        - { $ref: '#/components/parameters/Id' }
+        - { name: kind, in: query, schema: { type: string, enum: [signed, office, scan, paper], default: signed }, description: 'signed＝お客さま控え（RPT-02）、office＝フジモト様控え（RPT-03）、scan＝紙伝票のスキャン、paper＝紙伝票（RPT-04）' }
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+
+  # ------------------------------------------------------------------ terminal
+  /terminal/current-slip:
+    get:
+      tags: [terminal]
+      operationId: getCurrentSlip
+      summary: この端末に表示する伝票（なければ null）（FR-SGN-01）
+      x-roles: [SIGN_TERMINAL]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { slip: { oneOf: [ { $ref: '#/components/schemas/TerminalSlip' }, { type: 'null' } ] } } } } } }
+  /terminal/slips/{id}/sign:
+    post:
+      tags: [terminal]
+      operationId: signSlip
+      summary: サインの確定（FR-SGN-04）
+      x-roles: [SIGN_TERMINAL]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signaturePng, strokeCount]
+              properties:
+                signaturePng: { type: string, contentEncoding: base64, description: 'PNG（1200×400 まで、200KB まで）' }
+                strokeCount: { type: integer, minimum: 1 }
+                signerName: { type: string, maxLength: 40 }
+      responses:
+        '200': { description: サイン済, content: { application/json: { schema: { $ref: '#/components/schemas/TerminalSlip' } } } }
+        '409': { description: すでにサイン済・取りやめ済（SLIP_NOT_AWAITING）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  # ------------------------------------------------------------------ aggregates
+  /dashboard:
+    get:
+      tags: [aggregates]
+      operationId: getDashboard
+      summary: 本社の状況（FR-AGG-01）
+      x-roles: [OFFICE, ADMIN]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  today: { type: object, properties: { date: { type: string, format: date }, tripCount: { type: integer }, awaitingSignature: { type: integer }, unslippedTrips: { type: integer } } }
+                  invoices: { type: object, additionalProperties: { type: integer }, description: 状態ごとの件数 }
+                  freee: { type: object, properties: { connection: { $ref: '#/components/schemas/FreeeConnectionStatus' }, counts: { type: object, additionalProperties: { type: integer } } } }
+                  alerts: { type: array, items: { type: object, properties: { code: { type: string }, message: { type: string }, link: { type: string } } } }
+  /aggregates:
+    get:
+      tags: [aggregates]
+      operationId: getAggregates
+      summary: 集計（FR-AGG-03、11 6章）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: groupBy, in: query, required: true, schema: { type: array, items: { type: string, enum: [date, customer, site, billingParty, item, vehicleClass] }, maxItems: 3 }, style: form, explode: false }
+        - { name: customerId, in: query, schema: { type: string, format: uuid } }
+        - { name: billingPartyId, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object, properties: { keys: { type: object, additionalProperties: { type: string } }, labels: { type: object, additionalProperties: { type: string } }, tripCount: { type: integer }, amount: { type: integer }, priceMissingCount: { type: integer } } } }
+                  total: { type: object, properties: { tripCount: { type: integer }, amount: { type: integer }, priceMissingCount: { type: integer } } }
+  /aggregates/export:
+    get:
+      tags: [aggregates]
+      operationId: exportAggregates
+      summary: 集計の出力（CSV・Excel）（FR-AGG-05）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: format, in: query, required: true, schema: { type: string, enum: [csv, xlsx] } }
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+
+  # ------------------------------------------------------------------ billing
+  /billing/precheck:
+    get:
+      tags: [billing]
+      operationId: billingPrecheck
+      summary: 締めの前の確認（FR-BIL-04）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Month' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  month: { type: string }
+                  billingParties: { type: array, items: { type: object, properties: { billingPartyId: { type: string, format: uuid }, name: { type: string }, periodFrom: { type: string, format: date }, periodTo: { type: string, format: date }, tripCount: { type: integer }, subtotal: { type: integer }, existingInvoiceId: { type: [string, 'null'], format: uuid } } } }
+                  problems: { type: array, items: { $ref: '#/components/schemas/BillingProblem' } }
+  /billing/runs:
+    post:
+      tags: [billing]
+      operationId: runBilling
+      summary: 締め（請求書の自動作成）（FR-BIL-03）。50件を超えるときは 202 でジョブにする
+      x-roles: [OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [month], properties: { month: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' }, billingPartyIds: { type: array, items: { type: string, format: uuid } } } } } }
+      responses:
+        '201': { description: 締めの結果, content: { application/json: { schema: { $ref: '#/components/schemas/BillingRun' } } } }
+        '202': { description: ジョブで実行中, content: { application/json: { schema: { $ref: '#/components/schemas/BillingRun' } } } }
+  /billing/runs/{id}:
+    get:
+      tags: [billing]
+      operationId: getBillingRun
+      summary: 締めの結果（進み具合）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/BillingRun' } } } }
+  /invoices:
+    get:
+      tags: [billing]
+      operationId: listInvoices
+      summary: 請求書の一覧・検索（請求日・金額の範囲・請求先の組合せ、02 6.3）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: month, in: query, schema: { type: string } }
+        - { name: issueFrom, in: query, schema: { type: string, format: date } }
+        - { name: issueTo, in: query, schema: { type: string, format: date } }
+        - { name: amountMin, in: query, schema: { type: integer } }
+        - { name: amountMax, in: query, schema: { type: integer } }
+        - { name: billingPartyId, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: array, items: { $ref: '#/components/schemas/InvoiceStatus' } }, style: form, explode: false }
+        - { name: includeVoided, in: query, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/InvoiceSummary' } } } } } } }
+  /invoices/{id}:
+    get:
+      tags: [billing]
+      operationId: getInvoice
+      summary: 請求書の詳細（明細・元の便・伝票へのリンク）（FR-BIL-10）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+    patch:
+      tags: [billing]
+      operationId: updateInvoiceDates
+      summary: 請求日・入金期日の変更（送信前だけ）（FR-BIL-08）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer }, issueDate: { type: string, format: date }, dueDate: { type: string, format: date } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /invoices/{id}/rebuild:
+    post:
+      tags: [billing]
+      operationId: rebuildInvoice
+      summary: 作り直す（FR-BIL-11）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionOnly' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /invoices/{id}/confirm:
+    post:
+      tags: [billing]
+      operationId: confirmInvoice
+      summary: 確認済にする（FR-BIL-10）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionOnly' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /invoices/{id}/unconfirm:
+    post:
+      tags: [billing]
+      operationId: unconfirmInvoice
+      summary: 確認を取り消す
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/VersionOnly' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+  /invoices/{id}/void:
+    post:
+      tags: [billing]
+      operationId: voidInvoice
+      summary: 取消（理由必須）。freee 登録済なら取引の削除を予約（FR-BIL-13、FR-FRE-18）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReasonInput' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /invoices/{id}/reissue:
+    post:
+      tags: [billing]
+      operationId: reissueInvoice
+      summary: 取消して再発行（FR-BIL-13、FR-FRE-19）。新しい請求書（DRAFT）を返す
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ReasonInput' } } } }
+      responses:
+        '201': { description: 新しい請求書, content: { application/json: { schema: { $ref: '#/components/schemas/Invoice' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /invoices/{id}/pdf:
+    get:
+      tags: [billing]
+      operationId: getInvoicePdf
+      summary: 請求書 PDF（RPT-05）の署名付き URL
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+
+  # ------------------------------------------------------------------ mail
+  /invoices/mail-preview:
+    post:
+      tags: [mail]
+      operationId: previewInvoiceMail
+      summary: 送信前の確認（宛先・件名・本文・添付・freee の警告）（FR-MAL-02、FR-FRE-22）
+      x-roles: [OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [invoiceIds], properties: { invoiceIds: { type: array, items: { type: string, format: uuid }, minItems: 1, maxItems: 100 } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/MailPreview' } } } } } } }
+  /invoices/send:
+    post:
+      tags: [mail]
+      operationId: sendInvoices
+      summary: 確認済の請求書をメール送信（FR-MAL-02）
+      x-roles: [OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [invoiceIds], properties: { invoiceIds: { type: array, items: { type: string, format: uuid }, minItems: 1, maxItems: 100 } } } } }
+      responses:
+        '200': { description: 請求書ごとの結果, content: { application/json: { schema: { type: object, properties: { results: { type: array, items: { type: object, properties: { invoiceId: { type: string, format: uuid }, status: { $ref: '#/components/schemas/InvoiceStatus' }, error: { $ref: '#/components/schemas/Error' } } } } } } } } }
+  /invoices/{id}/resend:
+    post:
+      tags: [mail]
+      operationId: resendInvoice
+      summary: 再送（FR-MAL-05）。宛先を変えて送れる
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { to: { type: array, items: { type: string, format: email } }, cc: { type: array, items: { type: string, format: email } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MailLog' } } } }
+  /invoices/{id}/mail-logs:
+    get:
+      tags: [mail]
+      operationId: listMailLogs
+      summary: 送信履歴（FR-MAL-04）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MailLog' } } } } }
+  /webhooks/mail-events:
+    post:
+      tags: [mail]
+      operationId: receiveMailEvents
+      summary: メールサービスからの送信結果（不達など）（FR-MAL-06）。署名を検証する
+      security: []
+      x-roles: [EXTERNAL]
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { type: object } } } } }
+      responses:
+        '204': { description: 受け付けた }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ------------------------------------------------------------------ freee
+  /freee/connection:
+    get:
+      tags: [freee]
+      operationId: getFreeeConnection
+      summary: 連携の状態（FR-FRE-03）
+      x-roles: [OFFICE, ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FreeeConnectionStatus' } } } }
+    patch:
+      tags: [freee]
+      operationId: updateFreeeConnection
+      summary: 登録のしかた・事業所の選択（FR-FRE-02・09）
+      x-roles: [ADMIN]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [version], properties: { version: { type: integer }, registrationMode: { type: string, enum: [REVIEW, AUTO] }, companyId: { type: integer } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FreeeConnectionStatus' } } } }
+    delete:
+      tags: [freee]
+      operationId: disconnectFreee
+      summary: 連携の解除（鍵を消す）（FR-FRE-04）
+      x-roles: [ADMIN]
+      responses:
+        '204': { description: 解除した }
+  /freee/connection/authorize:
+    post:
+      tags: [freee]
+      operationId: startFreeeAuthorization
+      summary: 連携許可を始める。freee の認可画面の URL を返す（FR-FRE-01）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, required: [authorizeUrl], properties: { authorizeUrl: { type: string, format: uri } } } } } }
+  /freee/oauth/callback:
+    get:
+      tags: [freee]
+      operationId: freeeOAuthCallback
+      summary: freee からの戻り先。state を確かめて鍵を受け取り、SCR-41 へ戻す
+      x-roles: [ADMIN]
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        '302': { description: '/office/freee/settings?result=ok|error へ戻す' }
+  /freee/companies:
+    get:
+      tags: [freee]
+      operationId: listFreeeCompanies
+      summary: 選べる事業所（連携許可で事業所が決まらなかったとき）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } } } } }
+  /freee/partners:
+    get:
+      tags: [freee]
+      operationId: listFreeePartners
+      summary: freee の取引先（検索）
+      x-roles: [ADMIN]
+      parameters: [ { name: keyword, in: query, schema: { type: string } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } } } } }
+    post:
+      tags: [freee]
+      operationId: createFreeePartner
+      summary: 請求先から freee に取引先を作って対応付ける（FR-FRE-07）
+      x-roles: [ADMIN]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [billingPartyId], properties: { billingPartyId: { type: string, format: uuid } } } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PartnerMapping' } } } }
+  /freee/partner-mappings:
+    get:
+      tags: [freee]
+      operationId: listPartnerMappings
+      summary: 請求先と取引先の対応付けの一覧（FR-FRE-06）
+      x-roles: [OFFICE, ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PartnerMapping' } } } } }
+  /freee/partner-mappings/auto-match:
+    post:
+      tags: [freee]
+      operationId: autoMatchPartners
+      summary: 名前で自動照合（09 4.3）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: 照合の結果, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PartnerMapping' } } } } }
+  /billing-parties/{id}/freee-partner:
+    put:
+      tags: [freee]
+      operationId: setPartnerMapping
+      summary: 取引先を選び直す（null で外す）
+      x-roles: [ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [freeePartnerId], properties: { freeePartnerId: { type: [integer, 'null'] } } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PartnerMapping' } } } }
+  /freee/account-items:
+    get:
+      tags: [freee]
+      operationId: listFreeeAccountItems
+      summary: 勘定科目（収入のもの）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } } } } }
+  /freee/taxes:
+    get:
+      tags: [freee]
+      operationId: listFreeeTaxes
+      summary: 税区分（事業所で使えるもの。GET /api/1/taxes/companies/{company_id}）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } } } } }
+  /freee/items:
+    get:
+      tags: [freee]
+      operationId: listFreeeItems
+      summary: freee の品目
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } } } } }
+  /items/{id}/freee-mapping:
+    put:
+      tags: [freee]
+      operationId: setItemFreeeMapping
+      summary: 品目と勘定科目・税区分・品目の対応付け（FR-FRE-08）
+      x-roles: [ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [accountItemId, taxCode], properties: { accountItemId: { type: integer }, taxCode: { type: integer }, freeeItemId: { type: [integer, 'null'] } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
+  /freee/registrations:
+    get:
+      tags: [freee]
+      operationId: listFreeeRegistrations
+      summary: freee 登録の一覧と件数（FR-FRE-17）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: status, in: query, schema: { type: array, items: { $ref: '#/components/schemas/FreeeRegistrationStatus' } }, style: form, explode: false }
+        - { name: month, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  counts: { type: object, additionalProperties: { type: integer } }
+                  items: { type: array, items: { $ref: '#/components/schemas/FreeeRegistration' } }
+  /freee/registrations/{id}/preview:
+    get:
+      tags: [freee]
+      operationId: previewFreeeRegistration
+      summary: freee に送る内容（FR-FRE-11）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FreeeDealPreview' } } } }
+  /freee/registrations/register:
+    post:
+      tags: [freee]
+      operationId: registerToFreee
+      summary: 選択分を freee へ登録（FR-FRE-12）。要対応は受け付けない
+      x-roles: [ADMIN]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [registrationIds], properties: { registrationIds: { type: array, items: { type: string, format: uuid }, minItems: 1, maxItems: 100 } } } } } }
+      responses:
+        '200': { description: 登録ごとの結果, content: { application/json: { schema: { type: object, properties: { results: { type: array, items: { $ref: '#/components/schemas/FreeeRegistration' } } } } } } }
+  /freee/registrations/{id}/retry:
+    post:
+      tags: [freee]
+      operationId: retryFreeeRegistration
+      summary: エラーの再登録（FR-FRE-16）
+      x-roles: [ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/FreeeRegistration' } } } }
+  /freee/api-logs:
+    get:
+      tags: [freee]
+      operationId: listFreeeApiLogs
+      summary: freee 登録の履歴（FR-FRE-20）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: registrationId, in: query, schema: { type: string, format: uuid } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/FreeeApiLog' } } } } }
+
+  # ------------------------------------------------------------------ masters
+  /masters/{kind}:
+    get:
+      tags: [masters]
+      operationId: listMasters
+      summary: マスタの一覧（受付には金額・freee の項目を返さない）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters:
+        - $ref: '#/components/parameters/MasterKind'
+        - { name: includeInactive, in: query, schema: { type: boolean, default: false } }
+        - { name: q, in: query, schema: { type: string }, description: 名前・読みがなの頭文字 }
+        - { name: customerId, in: query, schema: { type: string, format: uuid }, description: 現場・車番をその客先のものに絞る }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MasterRecord' } } } } }
+    post:
+      tags: [masters]
+      operationId: createMaster
+      summary: マスタの追加（客先を作ると同名の請求先も作る、11 3.4）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/MasterKind' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MasterRecord' } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MasterRecord' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /masters/{kind}/{id}:
+    patch:
+      tags: [masters]
+      operationId: updateMaster
+      summary: マスタの変更・無効化（active=false）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/MasterKind' }, { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MasterRecord' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MasterRecord' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /masters/import:
+    post:
+      tags: [masters]
+      operationId: importMasters
+      summary: CSV の一括登録（客先・現場・請求先・車番）（FR-MST-10）。dryRun=true で確認だけ
+      x-roles: [OFFICE, ADMIN]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { type: object, required: [kind, file], properties: { kind: { type: string, enum: [customers, sites, billingParties, vehicles] }, file: { type: string, contentMediaType: text/csv }, dryRun: { type: boolean } } }
+      responses:
+        '200': { description: 取込の結果, content: { application/json: { schema: { type: object, properties: { created: { type: integer }, updated: { type: integer }, errors: { type: array, items: { type: object, properties: { line: { type: integer }, message: { type: string } } } } } } } } }
+  /price-tables:
+    get:
+      tags: [masters]
+      operationId: listPriceTables
+      summary: 単価表の一覧（参考値と違う金額の印つき）（FR-MST-07）
+      x-roles: [OFFICE, ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PriceTable' } } } } }
+    post:
+      tags: [masters]
+      operationId: createPriceTable
+      summary: 新しい単価表（copyFrom の表を写して作る）
+      x-roles: [OFFICE, ADMIN]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [effectiveFrom], properties: { effectiveFrom: { type: string, format: date }, copyFrom: { type: string, format: uuid }, note: { type: string } } } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PriceTable' } } } }
+  /price-tables/{id}/entries:
+    put:
+      tags: [masters]
+      operationId: putPriceEntries
+      summary: 単価表の金額をまとめて保存（適用開始日が過ぎ、請求書に使われた表は変更不可）
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/PriceEntry' } } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PriceTable' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  # ------------------------------------------------------------------ admin
+  /users:
+    get:
+      tags: [admin]
+      operationId: listUsers
+      summary: 利用者の一覧（FR-CMN-03）
+      x-roles: [ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/User' } } } } }
+    post:
+      tags: [admin]
+      operationId: createUser
+      summary: 利用者の追加（仮のパスワードを返す。次回ログインで変更）
+      x-roles: [ADMIN]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/UserInput' } } } }
+      responses:
+        '201': { description: OK, content: { application/json: { schema: { type: object, properties: { user: { $ref: '#/components/schemas/User' }, temporaryPassword: { type: string } } } } } }
+  /users/{id}:
+    patch:
+      tags: [admin]
+      operationId: updateUser
+      summary: 区分・対の端末・有効の変更
+      x-roles: [ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody: { required: true, content: { application/json: { schema: { allOf: [ { $ref: '#/components/schemas/UserInput' }, { type: object, required: [version], properties: { version: { type: integer } } } ] } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+  /users/{id}/reset-password:
+    post:
+      tags: [admin]
+      operationId: resetUserPassword
+      summary: パスワードの初期化（ロックも解除）
+      x-roles: [ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { temporaryPassword: { type: string } } } } } }
+  /audit-logs:
+    get:
+      tags: [admin]
+      operationId: listAuditLogs
+      summary: 操作履歴（FR-CMN-04）
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: targetType, in: query, schema: { type: string } }
+        - { name: targetId, in: query, schema: { type: string } }
+        - { name: userId, in: query, schema: { type: string, format: uuid } }
+        - { name: action, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 1, default: 1 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: '#/components/schemas/AuditLog' } }, total: { type: integer } } } } } }
+  /settings:
+    get:
+      tags: [admin]
+      operationId: getSettings
+      summary: システム設定
+      x-roles: [OFFICE, ADMIN]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+    patch:
+      tags: [admin]
+      operationId: updateSettings
+      summary: システム設定の変更（FR-CMN-05）
+      x-roles: [ADMIN]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Settings' } } } }
+
+  # ------------------------------------------------------------------ internal
+  /internal/jobs/run:
+    post:
+      tags: [internal]
+      operationId: runJobs
+      summary: ジョブの実行（Cloud Scheduler から毎分。Google の OIDC トークンを検証）
+      security: [ { schedulerOidc: [] } ]
+      x-roles: [SCHEDULER]
+      responses:
+        '200': { description: 実行した件数, content: { application/json: { schema: { type: object, properties: { done: { type: integer }, failed: { type: integer } } } } } }
+  /healthz:
+    get:
+      tags: [internal]
+      operationId: health
+      summary: 稼働確認（DB への接続を含む）
+      security: []
+      x-roles: [ANY]
+      responses:
+        '200': { description: OK }
+        '503': { description: DB に接続できない }
+
+components:
+  securitySchemes:
+    session: { type: apiKey, in: cookie, name: __session }
+    schedulerOidc: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    Date: { name: date, in: path, required: true, schema: { type: string, format: date } }
+    Month: { name: month, in: query, required: true, schema: { type: string, pattern: '^[0-9]{4}-(0[1-9]|1[0-2])$' } }
+    MasterKind: { name: kind, in: path, required: true, schema: { type: string, enum: [customers, sites, billingParties, vehicles, items, vehicleClasses, marks] } }
+  responses:
+    BadRequest: { description: 入力の誤り（VALIDATION_ERROR）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unauthorized: { description: ログインしていない（UNAUTHENTICATED）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Conflict: { description: 他の人が先に変更した（CONFLICT）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    Unprocessable: { description: 業務の決まりに反する（08 3.2 のコード）, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    FileUrl: { description: 署名付き URL（5分で失効）, content: { application/json: { schema: { type: object, required: [url, fileName], properties: { url: { type: string, format: uri }, fileName: { type: string }, expiresAt: { type: string, format: date-time } } } } } }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string, examples: [TRIP_LOCKED_BY_SLIP] }
+        message: { type: string }
+        details: {}
+        requestId: { type: string }
+    VersionOnly: { type: object, required: [version], properties: { version: { type: integer } } }
+    ReasonInput: { type: object, required: [version, reason], properties: { version: { type: integer }, reason: { type: string, minLength: 1, maxLength: 500 } } }
+    Role: { type: string, enum: [RECEPTION, OFFICE, ADMIN, SIGN_TERMINAL] }
+    Me:
+      type: object
+      required: [id, name, role, csrfToken]
+      properties:
+        id: { type: string, format: uuid }
+        loginId: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        pairedTerminalId: { type: [string, 'null'], format: uuid }
+        mustChangePassword: { type: boolean }
+        csrfToken: { type: string }
+        reportHours: { type: object, properties: { first: { type: integer }, last: { type: integer } } }
+        serverTime: { type: string, format: date-time }
+    ReportRowInput:
+      type: object
+      required: [date, customerId, itemId, vehicleClassId]
+      properties:
+        date: { type: string, format: date }
+        customerId: { type: string, format: uuid }
+        siteId: { type: [string, 'null'], format: uuid }
+        vehicleId: { type: string, format: uuid }
+        vehicleNo: { type: string, maxLength: 20, description: 新しい車番のとき（vehicleId と排他） }
+        itemId: { type: string, format: uuid }
+        vehicleClassId: { type: string, format: uuid }
+        afterRowId: { type: string, format: uuid, description: この行の下に入れる }
+    ReportRow:
+      type: object
+      required: [id, customerId, customerName, vehicleId, vehicleNo, itemId, itemLabel, vehicleClassId, vehicleClassName, sortOrder, version]
+      properties:
+        id: { type: string, format: uuid }
+        customerId: { type: string, format: uuid }
+        customerName: { type: string }
+        siteId: { type: [string, 'null'], format: uuid }
+        siteName: { type: [string, 'null'] }
+        vehicleId: { type: string, format: uuid }
+        vehicleNo: { type: string }
+        itemId: { type: string, format: uuid }
+        itemLabel: { type: string, description: 日報表記 }
+        vehicleClassId: { type: string, format: uuid }
+        vehicleClassName: { type: string }
+        sortOrder: { type: integer }
+        deleted: { type: boolean }
+        version: { type: integer }
+    Trip:
+      type: object
+      required: [id, rowId, time, hourSlot, status, effectiveItemId, version]
+      properties:
+        id: { type: string, format: uuid }
+        rowId: { type: string, format: uuid }
+        time: { type: string, examples: ['11:24'] }
+        hourSlot: { type: integer, description: 表示する列（11 2.2） }
+        markId: { type: [string, 'null'], format: uuid }
+        effectiveItemId: { type: string, format: uuid }
+        convoyId: { type: [string, 'null'], format: uuid }
+        slipId: { type: [string, 'null'], format: uuid }
+        locked: { type: string, enum: [NONE, SLIP, INVOICE] }
+        status: { type: string, enum: [ACTIVE, CANCELLED] }
+        version: { type: integer }
+    TripsCreated:
+      type: object
+      properties:
+        trips: { type: array, items: { $ref: '#/components/schemas/Trip' } }
+        clockSkewWarning: { type: boolean, description: PC の時計が5分以上ずれていた }
+    TripCounts:
+      type: object
+      properties:
+        byRow: { type: object, additionalProperties: { type: integer } }
+        byCustomer: { type: object, additionalProperties: { type: integer } }
+        total: { type: integer }
+    DailyReport:
+      type: object
+      required: [date, rows, trips, counts, cursor, marks]
+      properties:
+        id: { type: string, format: uuid }
+        date: { type: string, format: date }
+        firstHour: { type: integer }
+        lastHour: { type: integer }
+        rows: { type: array, items: { $ref: '#/components/schemas/ReportRow' } }
+        trips: { type: array, items: { $ref: '#/components/schemas/Trip' } }
+        counts: { $ref: '#/components/schemas/TripCounts' }
+        marks: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, symbol: { type: string }, displayName: { type: string }, color: { type: string } } } }
+        cursor: { type: string }
+    SlipStatus: { type: string, enum: [DRAFT, AWAITING_SIGNATURE, SIGNED, PAPER_PRINTED, PAPER_SIGNED, CANCELLED] }
+    SlipLine:
+      type: object
+      properties:
+        lineNo: { type: integer }
+        itemLabel: { type: string, examples: ['山土（真砂土30mm）10t'] }
+        tripCount: { type: integer }
+        vehicleNos: { type: string }
+    Slip:
+      type: object
+      required: [id, slipNo, slipDate, status, addresseeName, billingPartyId, billingPartyName, lines, version]
+      properties:
+        id: { type: string, format: uuid }
+        slipNo: { type: string }
+        slipDate: { type: string, format: date }
+        status: { $ref: '#/components/schemas/SlipStatus' }
+        customerId: { type: string, format: uuid }
+        addresseeName: { type: string }
+        siteId: { type: [string, 'null'], format: uuid }
+        siteName: { type: [string, 'null'] }
+        billingPartyId: { type: string, format: uuid }
+        billingPartyName: { type: string }
+        billingPartyChanged: { type: boolean }
+        billingChangeReason: { type: [string, 'null'] }
+        lines: { type: array, items: { $ref: '#/components/schemas/SlipLine' } }
+        tripIds: { type: array, items: { type: string, format: uuid } }
+        signedAt: { type: [string, 'null'], format: date-time }
+        hasPaperScan: { type: boolean }
+        lockedByInvoice: { type: boolean }
+        version: { type: integer }
+    TerminalSlip:
+      type: object
+      description: 金額を含めない（FR-SGN-02）
+      properties:
+        id: { type: string, format: uuid }
+        slipNo: { type: string }
+        slipDate: { type: string, format: date }
+        addresseeName: { type: string }
+        siteName: { type: [string, 'null'] }
+        lines: { type: array, items: { $ref: '#/components/schemas/SlipLine' } }
+        status: { $ref: '#/components/schemas/SlipStatus' }
+    BillingProblem:
+      type: object
+      properties:
+        kind: { type: string, enum: [PRICE_MISSING, INVOICE_BLOCKED, UNSLIPPED_TRIPS, AWAITING_SIGNATURE, MAIL_TO_MISSING, ALREADY_INVOICED, INACTIVE_BILLING_PARTY, FREEE_PARTNER_UNMAPPED] }
+        billingPartyId: { type: [string, 'null'], format: uuid }
+        tripIds: { type: array, items: { type: string, format: uuid } }
+        message: { type: string }
+    BillingRun:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        month: { type: string }
+        status: { type: string, enum: [RUNNING, DONE, FAILED] }
+        createdInvoiceIds: { type: array, items: { type: string, format: uuid } }
+        problems: { type: array, items: { $ref: '#/components/schemas/BillingProblem' } }
+    InvoiceStatus: { type: string, enum: [DRAFT, NEEDS_RECHECK, CONFIRMED, SENDING, SENT, SEND_ERROR, VOIDED] }
+    InvoiceSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        invoiceNo: { type: string }
+        billingPartyId: { type: string, format: uuid }
+        billingPartyName: { type: string }
+        periodFrom: { type: string, format: date }
+        periodTo: { type: string, format: date }
+        issueDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        siteCount: { type: integer }
+        tripCount: { type: integer }
+        subtotal: { type: integer }
+        taxAmount: { type: integer }
+        total: { type: integer }
+        status: { $ref: '#/components/schemas/InvoiceStatus' }
+        freeeStatus: { oneOf: [ { $ref: '#/components/schemas/FreeeRegistrationStatus' }, { type: 'null' } ] }
+        version: { type: integer }
+    Invoice:
+      allOf:
+        - $ref: '#/components/schemas/InvoiceSummary'
+        - type: object
+          properties:
+            lines:
+              type: array
+              items:
+                type: object
+                properties:
+                  lineNo: { type: integer }
+                  siteName: { type: [string, 'null'] }
+                  itemName: { type: string }
+                  vehicleClassName: { type: string }
+                  unitPrice: { type: integer }
+                  tripCount: { type: integer }
+                  amount: { type: integer }
+                  tripIds: { type: array, items: { type: string, format: uuid } }
+                  slipIds: { type: array, items: { type: string, format: uuid } }
+            replacesInvoiceId: { type: [string, 'null'], format: uuid }
+            replacedByInvoiceId: { type: [string, 'null'], format: uuid }
+            voidReason: { type: [string, 'null'] }
+            taxRate: { type: integer }
+    MailPreview:
+      type: object
+      properties:
+        invoiceId: { type: string, format: uuid }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        subject: { type: string }
+        body: { type: string }
+        attachmentName: { type: string }
+        warnings: { type: array, items: { type: string, enum: [MAIL_TO_MISSING, NOT_CONFIRMED, FREEE_PARTNER_UNMAPPED, FREEE_ITEM_UNMAPPED] } }
+    MailLog:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [SEND, RESEND] }
+        to: { type: array, items: { type: string } }
+        cc: { type: array, items: { type: string } }
+        subject: { type: string }
+        attachmentName: { type: string }
+        status: { type: string, enum: [QUEUED, SENT, FAILED] }
+        errorMessage: { type: [string, 'null'] }
+        requestedBy: { type: string }
+        requestedAt: { type: string, format: date-time }
+    FreeeConnectionStatus:
+      type: object
+      properties:
+        status: { type: string, enum: [DISCONNECTED, CONNECTED, COMPANY_REQUIRED, REAUTH_REQUIRED] }
+        companyId: { type: [integer, 'null'] }
+        companyName: { type: [string, 'null'] }
+        authorizedFreeeUser: { type: [string, 'null'] }
+        connectedAt: { type: [string, 'null'], format: date-time }
+        lastCheckedAt: { type: [string, 'null'], format: date-time }
+        registrationMode: { type: string, enum: [REVIEW, AUTO] }
+        lastError: { type: [string, 'null'] }
+        version: { type: integer }
+    FreeeRef:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        code: { type: [string, 'null'] }
+    PartnerMapping:
+      type: object
+      properties:
+        billingPartyId: { type: string, format: uuid }
+        billingPartyName: { type: string }
+        freeePartnerId: { type: [integer, 'null'] }
+        freeePartnerName: { type: [string, 'null'] }
+        status: { type: string, enum: [UNMAPPED, AUTO, CANDIDATE, MANUAL, CREATED] }
+        candidates: { type: array, items: { $ref: '#/components/schemas/FreeeRef' } }
+    FreeeRegistrationStatus: { type: string, enum: [PENDING, NEEDS_ACTION, QUEUED, PROCESSING, REGISTERED, ERROR, DELETED] }
+    FreeeRegistration:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        invoiceId: { type: string, format: uuid }
+        invoiceNo: { type: string }
+        billingPartyName: { type: string }
+        issueDate: { type: string, format: date }
+        total: { type: integer }
+        freeePartnerName: { type: [string, 'null'] }
+        action: { type: string, enum: [CREATE, UPDATE, DELETE] }
+        status: { $ref: '#/components/schemas/FreeeRegistrationStatus' }
+        reasons: { type: array, items: { type: object, properties: { code: { type: string }, message: { type: string } } } }
+        dealId: { type: [integer, 'null'] }
+        receiptId: { type: [integer, 'null'] }
+        freeeDealUrl: { type: [string, 'null'], format: uri }
+        attempts: { type: integer }
+        registeredAt: { type: [string, 'null'], format: date-time }
+    FreeeDealPreview:
+      type: object
+      properties:
+        deal:
+          type: object
+          properties:
+            type: { type: string, const: income }
+            issueDate: { type: string, format: date }
+            dueDate: { type: string, format: date }
+            partnerId: { type: [integer, 'null'] }
+            partnerName: { type: [string, 'null'] }
+            refNumber: { type: string }
+            details: { type: array, items: { type: object, properties: { accountItemName: { type: string }, taxName: { type: string }, itemName: { type: [string, 'null'] }, amount: { type: integer }, vat: { type: integer } } } }
+        receipt: { type: object, properties: { fileName: { type: string }, documentType: { type: string, const: invoice }, description: { type: string } } }
+        canRegister: { type: boolean }
+        reasons: { type: array, items: { type: object, properties: { code: { type: string }, message: { type: string } } } }
+    FreeeApiLog:
+      type: object
+      properties:
+        id: { type: integer }
+        registrationId: { type: [string, 'null'], format: uuid }
+        method: { type: string }
+        path: { type: string }
+        statusCode: { type: [integer, 'null'] }
+        durationMs: { type: integer }
+        error: { type: [string, 'null'] }
+        requestedBy: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    Item:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        reportLabel: { type: string }
+        priceItemName: { type: string }
+        direction: { type: string, enum: [RECEIVE, DELIVER] }
+        sortOrder: { type: integer }
+        freeeAccountItemId: { type: [integer, 'null'] }
+        freeeTaxCode: { type: [integer, 'null'] }
+        freeeItemId: { type: [integer, 'null'] }
+        active: { type: boolean }
+        version: { type: integer }
+    MasterRecord:
+      type: object
+      description: kind ごとの項目（07 DB設計書 11章の列を camelCase にしたもの）。id・version・active は共通
+      properties:
+        id: { type: string, format: uuid }
+        active: { type: boolean }
+        version: { type: integer }
+      additionalProperties: true
+    PriceEntry:
+      type: object
+      required: [itemId, vehicleClassId, unitPrice]
+      properties:
+        itemId: { type: string, format: uuid }
+        vehicleClassId: { type: string, format: uuid }
+        unitPrice: { type: integer, minimum: 0 }
+        referencePrice: { type: [integer, 'null'], readOnly: true }
+        differsFromReference: { type: boolean, readOnly: true }
+    PriceTable:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        effectiveFrom: { type: string, format: date }
+        note: { type: [string, 'null'] }
+        locked: { type: boolean, description: 請求書に使われた }
+        entries: { type: array, items: { $ref: '#/components/schemas/PriceEntry' } }
+    User:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        loginId: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        email: { type: [string, 'null'] }
+        mfaEnabled: { type: boolean }
+        pairedTerminalId: { type: [string, 'null'], format: uuid }
+        lockedUntil: { type: [string, 'null'], format: date-time }
+        active: { type: boolean }
+        version: { type: integer }
+    UserInput:
+      type: object
+      required: [loginId, name, role]
+      properties:
+        loginId: { type: string, pattern: '^[a-z0-9._-]{3,40}$' }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/Role' }
+        email: { type: [string, 'null'], format: email }
+        mfaEnabled: { type: boolean }
+        pairedTerminalId: { type: [string, 'null'], format: uuid }
+        active: { type: boolean }
+    AuditLog:
+      type: object
+      properties:
+        id: { type: integer }
+        occurredAt: { type: string, format: date-time }
+        userName: { type: [string, 'null'] }
+        role: { type: [string, 'null'] }
+        action: { type: string }
+        targetType: { type: string }
+        targetId: { type: [string, 'null'] }
+        summary: { type: string }
+        before: {}
+        after: {}
+        reason: { type: [string, 'null'] }
+    Settings:
+      type: object
+      properties:
+        companyName: { type: string }
+        officeName: { type: string }
+        postalCode: { type: [string, 'null'] }
+        address: { type: [string, 'null'] }
+        tel: { type: [string, 'null'] }
+        fax: { type: [string, 'null'] }
+        invoiceRegistrationNo: { type: [string, 'null'], pattern: '^T[0-9]{13}$' }
+        bankAccountText: { type: [string, 'null'] }
+        invoiceNote: { type: [string, 'null'] }
+        mailFromAddress: { type: [string, 'null'], format: email }
+        mailFromName: { type: [string, 'null'] }
+        mailReplyTo: { type: [string, 'null'], format: email }
+        mailSubjectTemplate: { type: string }
+        mailBodyTemplate: { type: string }
+        reportFirstHour: { type: integer, minimum: 0, maximum: 23 }
+        reportLastHour: { type: integer, minimum: 0, maximum: 23 }
+        taxRate: { type: integer }
+        taxRounding: { type: string, enum: [floor, round, ceil] }
+        slipWarningEnabled: { type: boolean }
+        version: { type: integer }

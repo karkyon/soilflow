@@ -1,0 +1,216 @@
+{
+  "$comment": "SoilFlow 請求計算の正解データ（11 計算仕様書 7章）。expected は計算仕様書の規則から手で計算した値で、プログラムの出力から作ったものではない。単価は reference/価格表_2023-04.csv の値。",
+  "version": "1.0",
+  "cases": [
+    {
+      "id": "G-01",
+      "title": "2026年2月の締め：月末締め・20日締め・印・請求先の4ケース・価格改定・取消・単価なし",
+      "month": "2026-02",
+      "taxRate": 10,
+      "rounding": "floor",
+      "masters": {
+        "vehicleClasses": [
+          { "id": "vc10", "name": "10t", "capacityM3": 5.5, "smallVehicle": false, "sortOrder": 1 },
+          { "id": "vc4", "name": "4t", "capacityM3": 2.2, "smallVehicle": true, "sortOrder": 4 },
+          { "id": "vc2", "name": "2t", "capacityM3": 1.1, "smallVehicle": true, "sortOrder": 6 }
+        ],
+        "items": [
+          { "id": "it_hassei12", "reportLabel": "残土", "priceItemName": "建設発生土1〜2種", "direction": "RECEIVE", "sortOrder": 10 },
+          { "id": "it_deido", "reportLabel": "軟弱土", "priceItemName": "泥土", "direction": "RECEIVE", "sortOrder": 30 },
+          { "id": "it_kusa12", "reportLabel": "残土（草根）", "priceItemName": "建設発生土（草根混）1〜2種", "direction": "RECEIVE", "sortOrder": 40 },
+          { "id": "it_zatsu", "reportLabel": "雑石", "priceItemName": "雑石", "direction": "RECEIVE", "sortOrder": 70 },
+          { "id": "it_masa30", "reportLabel": "山土", "priceItemName": "真砂土（30mm篩い）", "direction": "DELIVER", "sortOrder": 110 }
+        ],
+        "priceTables": [
+          { "id": "pt2023", "effectiveFrom": "2023-04-01", "entries": [
+            { "itemId": "it_hassei12", "vehicleClassId": "vc10", "unitPrice": 8250 },
+            { "itemId": "it_hassei12", "vehicleClassId": "vc4", "unitPrice": 3300 },
+            { "itemId": "it_hassei12", "vehicleClassId": "vc2", "unitPrice": 1650 },
+            { "itemId": "it_deido", "vehicleClassId": "vc10", "unitPrice": 27500 },
+            { "itemId": "it_deido", "vehicleClassId": "vc4", "unitPrice": 11000 },
+            { "itemId": "it_kusa12", "vehicleClassId": "vc10", "unitPrice": 16500 },
+            { "itemId": "it_zatsu", "vehicleClassId": "vc10", "unitPrice": 22000 },
+            { "itemId": "it_zatsu", "vehicleClassId": "vc2", "unitPrice": 4400 },
+            { "itemId": "it_masa30", "vehicleClassId": "vc10", "unitPrice": 7150 },
+            { "itemId": "it_masa30", "vehicleClassId": "vc4", "unitPrice": 3860 }
+          ] },
+          { "id": "pt2026", "effectiveFrom": "2026-02-16", "$comment": "【デモ】月の途中の価格改定。山土10tだけ 7,700円に変更", "entries": [
+            { "itemId": "it_hassei12", "vehicleClassId": "vc10", "unitPrice": 8250 },
+            { "itemId": "it_hassei12", "vehicleClassId": "vc4", "unitPrice": 3300 },
+            { "itemId": "it_hassei12", "vehicleClassId": "vc2", "unitPrice": 1650 },
+            { "itemId": "it_deido", "vehicleClassId": "vc10", "unitPrice": 27500 },
+            { "itemId": "it_deido", "vehicleClassId": "vc4", "unitPrice": 11000 },
+            { "itemId": "it_kusa12", "vehicleClassId": "vc10", "unitPrice": 16500 },
+            { "itemId": "it_zatsu", "vehicleClassId": "vc10", "unitPrice": 22000 },
+            { "itemId": "it_zatsu", "vehicleClassId": "vc2", "unitPrice": 4400 },
+            { "itemId": "it_masa30", "vehicleClassId": "vc10", "unitPrice": 7700 },
+            { "itemId": "it_masa30", "vehicleClassId": "vc4", "unitPrice": 3860 }
+          ] }
+        ],
+        "markRules": [
+          { "markId": "m_kusa", "fromItemId": "it_hassei12", "toItemId": "it_kusa12" },
+          { "markId": "m_maru", "fromItemId": "it_hassei12", "toItemId": "it_deido" }
+        ],
+        "billingParties": [
+          { "id": "bp_sanko", "name": "三幸工務店", "kana": "さんこうこうむてん", "closingDay": 0, "paymentMonthOffset": 1, "paymentDay": 0 },
+          { "id": "bp_itoshima", "name": "糸島組", "kana": "いとしまぐみ", "closingDay": 0, "paymentMonthOffset": 1, "paymentDay": 0 },
+          { "id": "bp_motouke", "name": "山陽建設", "kana": "さんようけんせつ", "closingDay": 20, "paymentMonthOffset": 1, "paymentDay": 10 },
+          { "id": "bp_kaya", "name": "かや工業", "kana": "かやこうぎょう", "closingDay": 0, "paymentMonthOffset": 1, "paymentDay": 0 },
+          { "id": "bp_new", "name": "新規建設", "kana": "しんきけんせつ", "closingDay": 0, "paymentMonthOffset": 1, "paymentDay": 0 }
+        ],
+        "customers": [
+          { "id": "c_sanko", "name": "三幸工務店", "defaultBillingPartyId": "bp_sanko" },
+          { "id": "c_itoshima", "name": "糸島組", "defaultBillingPartyId": "bp_itoshima" },
+          { "id": "c_unso", "name": "丸山運送", "defaultBillingPartyId": "bp_motouke", "$comment": "ケースB：運搬会社が来場し、請求は元請へ" },
+          { "id": "c_kaya", "name": "かや工業", "defaultBillingPartyId": "bp_kaya" },
+          { "id": "c_new", "name": "新規建設", "defaultBillingPartyId": "bp_new" }
+        ],
+        "sites": [
+          { "id": "s_hyakken", "customerId": "c_sanko", "name": "百間川", "kana": "ひゃっけんがわ", "defaultBillingPartyId": null },
+          { "id": "s_kasen", "customerId": "c_itoshima", "name": "公共河川工事", "kana": "こうきょうかせんこうじ", "defaultBillingPartyId": null },
+          { "id": "s_unso1", "customerId": "c_unso", "name": "河道掘削工2-6", "kana": "かどうくっさくこう", "defaultBillingPartyId": null },
+          { "id": "s_kaya1", "customerId": "c_kaya", "name": "七日市", "kana": "なのかいち", "defaultBillingPartyId": "bp_motouke", "$comment": "ケースC：現場によって請求先が変わる" },
+          { "id": "s_kaya2", "customerId": "c_kaya", "name": "842", "kana": "はちよんに", "defaultBillingPartyId": null },
+          { "id": "s_new1", "customerId": "c_new", "name": "新規現場", "kana": "しんきげんば", "defaultBillingPartyId": null }
+        ]
+      },
+      "rows": [
+        { "id": "r1", "customerId": "c_sanko", "siteId": "s_hyakken", "vehicleNo": "101", "itemId": "it_masa30", "vehicleClassId": "vc10" },
+        { "id": "r2", "customerId": "c_itoshima", "siteId": "s_kasen", "vehicleNo": "305", "itemId": "it_hassei12", "vehicleClassId": "vc10" },
+        { "id": "r3", "customerId": "c_unso", "siteId": "s_unso1", "vehicleNo": "88", "itemId": "it_hassei12", "vehicleClassId": "vc4" },
+        { "id": "r4", "customerId": "c_kaya", "siteId": "s_kaya1", "vehicleNo": "5", "itemId": "it_deido", "vehicleClassId": "vc10" },
+        { "id": "r5", "customerId": "c_kaya", "siteId": "s_kaya2", "vehicleNo": "7", "itemId": "it_zatsu", "vehicleClassId": "vc2" },
+        { "id": "r6", "customerId": "c_sanko", "siteId": "s_hyakken", "vehicleNo": "505", "itemId": "it_hassei12", "vehicleClassId": "vc10" },
+        { "id": "r7", "customerId": "c_new", "siteId": "s_new1", "vehicleNo": "9", "itemId": "it_zatsu", "vehicleClassId": "vc4" }
+      ],
+      "slips": [
+        { "id": "sl2", "status": "SIGNED", "billingPartyId": "bp_kaya", "$comment": "ケースD：伝票発行時に請求先を選び直した" },
+        { "id": "sl3", "status": "CANCELLED", "billingPartyId": "bp_sanko", "$comment": "取消した伝票の請求先は使わない" }
+      ],
+      "trips": [
+        { "id": "t01", "rowId": "r1", "date": "2026-02-05", "time": "08:08", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t02", "rowId": "r1", "date": "2026-02-05", "time": "09:31", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t03", "rowId": "r1", "date": "2026-02-05", "time": "11:24", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t04", "rowId": "r1", "date": "2026-02-10", "time": "10:00", "markId": null, "status": "CANCELLED", "slipId": null },
+        { "id": "t05", "rowId": "r1", "date": "2026-02-20", "time": "14:19", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t06", "rowId": "r1", "date": "2026-02-27", "time": "08:40", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t07", "rowId": "r1", "date": "2026-02-27", "time": "13:05", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t08", "rowId": "r2", "date": "2026-02-05", "time": "09:27", "markId": "m_kusa", "status": "ACTIVE", "slipId": null },
+        { "id": "t09", "rowId": "r2", "date": "2026-02-05", "time": "10:43", "markId": "m_kusa", "status": "ACTIVE", "slipId": null },
+        { "id": "t10", "rowId": "r2", "date": "2026-02-05", "time": "11:00", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t11", "rowId": "r2", "date": "2026-02-05", "time": "13:22", "markId": "m_maru", "status": "ACTIVE", "slipId": null },
+        { "id": "t12", "rowId": "r3", "date": "2026-01-25", "time": "10:10", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t13", "rowId": "r3", "date": "2026-02-18", "time": "15:30", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t14", "rowId": "r3", "date": "2026-02-21", "time": "09:00", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t15", "rowId": "r4", "date": "2026-02-05", "time": "08:47", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t16", "rowId": "r4", "date": "2026-02-05", "time": "09:39", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t17", "rowId": "r5", "date": "2026-02-05", "time": "14:54", "markId": null, "status": "ACTIVE", "slipId": "sl3" },
+        { "id": "t18", "rowId": "r6", "date": "2026-02-06", "time": "09:32", "markId": null, "status": "ACTIVE", "slipId": "sl2" },
+        { "id": "t19", "rowId": "r6", "date": "2026-02-06", "time": "11:24", "markId": null, "status": "ACTIVE", "slipId": null },
+        { "id": "t20", "rowId": "r7", "date": "2026-02-12", "time": "10:00", "markId": null, "status": "ACTIVE", "slipId": null }
+      ],
+      "expected": {
+        "invoices": [
+          {
+            "invoiceNo": "SF-2602-001", "billingPartyId": "bp_itoshima", "periodFrom": "2026-02-01", "periodTo": "2026-02-28", "issueDate": "2026-02-28", "dueDate": "2026-03-31",
+            "lines": [
+              { "lineNo": 1, "siteId": "s_kasen", "itemId": "it_hassei12", "vehicleClassId": "vc10", "unitPrice": 8250, "tripCount": 1, "amount": 8250 },
+              { "lineNo": 2, "siteId": "s_kasen", "itemId": "it_deido", "vehicleClassId": "vc10", "unitPrice": 27500, "tripCount": 1, "amount": 27500 },
+              { "lineNo": 3, "siteId": "s_kasen", "itemId": "it_kusa12", "vehicleClassId": "vc10", "unitPrice": 16500, "tripCount": 2, "amount": 33000 }
+            ],
+            "subtotal": 68750, "taxAmount": 6875, "total": 75625, "tripIds": ["t08", "t09", "t10", "t11"]
+          },
+          {
+            "invoiceNo": "SF-2602-002", "billingPartyId": "bp_kaya", "periodFrom": "2026-02-01", "periodTo": "2026-02-28", "issueDate": "2026-02-28", "dueDate": "2026-03-31",
+            "lines": [
+              { "lineNo": 1, "siteId": "s_kaya2", "itemId": "it_zatsu", "vehicleClassId": "vc2", "unitPrice": 4400, "tripCount": 1, "amount": 4400 },
+              { "lineNo": 2, "siteId": "s_hyakken", "itemId": "it_hassei12", "vehicleClassId": "vc10", "unitPrice": 8250, "tripCount": 1, "amount": 8250 }
+            ],
+            "subtotal": 12650, "taxAmount": 1265, "total": 13915, "tripIds": ["t17", "t18"]
+          },
+          {
+            "invoiceNo": "SF-2602-003", "billingPartyId": "bp_sanko", "periodFrom": "2026-02-01", "periodTo": "2026-02-28", "issueDate": "2026-02-28", "dueDate": "2026-03-31",
+            "lines": [
+              { "lineNo": 1, "siteId": "s_hyakken", "itemId": "it_hassei12", "vehicleClassId": "vc10", "unitPrice": 8250, "tripCount": 1, "amount": 8250 },
+              { "lineNo": 2, "siteId": "s_hyakken", "itemId": "it_masa30", "vehicleClassId": "vc10", "unitPrice": 7150, "tripCount": 3, "amount": 21450 },
+              { "lineNo": 3, "siteId": "s_hyakken", "itemId": "it_masa30", "vehicleClassId": "vc10", "unitPrice": 7700, "tripCount": 3, "amount": 23100 }
+            ],
+            "$comment": "t05（2/20）は改定日 2/16 以降のため 7,700円",
+            "subtotal": 52800, "taxAmount": 5280, "total": 58080, "tripIds": ["t01", "t02", "t03", "t05", "t06", "t07", "t19"]
+          },
+          {
+            "invoiceNo": "SF-2602-004", "billingPartyId": "bp_motouke", "periodFrom": "2026-01-21", "periodTo": "2026-02-20", "issueDate": "2026-02-20", "dueDate": "2026-03-10",
+            "lines": [
+              { "lineNo": 1, "siteId": "s_unso1", "itemId": "it_hassei12", "vehicleClassId": "vc4", "unitPrice": 3300, "tripCount": 2, "amount": 6600 },
+              { "lineNo": 2, "siteId": "s_kaya1", "itemId": "it_deido", "vehicleClassId": "vc10", "unitPrice": 27500, "tripCount": 2, "amount": 55000 }
+            ],
+            "subtotal": 61600, "taxAmount": 6160, "total": 67760, "tripIds": ["t12", "t13", "t15", "t16"]
+          }
+        ],
+        "problems": [
+          { "kind": "PRICE_MISSING", "tripId": "t20", "billingPartyId": "bp_new" },
+          { "kind": "INVOICE_BLOCKED", "billingPartyId": "bp_new" }
+        ],
+        "freee": {
+          "invoiceNo": "SF-2602-001",
+          "mapping": {
+            "it_hassei12": { "accountItemId": 101, "taxCode": 129, "freeeItemId": 1001 },
+            "it_kusa12": { "accountItemId": 101, "taxCode": 129, "freeeItemId": 1001 },
+            "it_deido": { "accountItemId": 101, "taxCode": 129, "freeeItemId": 1002 }
+          },
+          "details": [
+            { "accountItemId": 101, "taxCode": 129, "itemId": 1001, "amount": 45375, "vat": 4125 },
+            { "accountItemId": 101, "taxCode": 129, "itemId": 1002, "amount": 30250, "vat": 2750 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "G-02",
+      "title": "消費税の端数処理（請求書ごとに1回）と、freee の明細への端数の配り方",
+      "taxRate": 10,
+      "subtotal": 2470,
+      "lines": [
+        { "lineNo": 1, "itemId": "a", "amount": 1235 },
+        { "lineNo": 2, "itemId": "b", "amount": 1235 }
+      ],
+      "expected": {
+        "tax": { "floor": 247, "round": 247, "ceil": 247 },
+        "taxOf3705": { "floor": 370, "round": 371, "ceil": 371 },
+        "freee": {
+          "mapping": { "a": { "accountItemId": 101, "taxCode": 129, "freeeItemId": 1 }, "b": { "accountItemId": 101, "taxCode": 129, "freeeItemId": 2 } },
+          "details": [
+            { "accountItemId": 101, "taxCode": 129, "itemId": 1, "amount": 1359, "vat": 124 },
+            { "accountItemId": 101, "taxCode": 129, "itemId": 2, "amount": 1358, "vat": 123 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "G-03",
+      "title": "請求期間と入金期日",
+      "periods": [
+        { "month": "2026-02", "closingDay": 0, "from": "2026-02-01", "to": "2026-02-28" },
+        { "month": "2026-02", "closingDay": 20, "from": "2026-01-21", "to": "2026-02-20" },
+        { "month": "2026-03", "closingDay": 31, "from": "2026-03-01", "to": "2026-03-31", "$comment": "31は月末と同じ扱いにならないが、28日を超える締め日は登録できない（FR-MST-03）。関数の上限処理の確認用" },
+        { "month": "2028-03", "closingDay": 28, "from": "2028-02-29", "to": "2028-03-28", "$comment": "うるう年：2月28日締めの翌日は2月29日" },
+        { "month": "2026-01", "closingDay": 15, "from": "2025-12-16", "to": "2026-01-15" }
+      ],
+      "dueDates": [
+        { "periodTo": "2026-02-28", "offset": 1, "day": 0, "due": "2026-03-31" },
+        { "periodTo": "2026-02-20", "offset": 1, "day": 10, "due": "2026-03-10" },
+        { "periodTo": "2026-01-31", "offset": 1, "day": 31, "due": "2026-02-28" },
+        { "periodTo": "2026-11-30", "offset": 2, "day": 0, "due": "2027-01-31" },
+        { "periodTo": "2026-03-31", "offset": 0, "day": 0, "due": "2026-03-31" }
+      ]
+    },
+    {
+      "id": "G-04",
+      "title": "価格表の全77の金額が ㎥単価×容量（＋4t車以下の積込料）と一致すること（Q-02 の根拠）",
+      "source": "reference/価格表_2023-04.csv",
+      "capacities": { "10t": 5.5, "8t": 4.4, "6t": 3.3, "4t": 2.2, "3t": 1.7, "2t": 1.1, "1t": 0.6 },
+      "smallVehicles": ["4t", "3t", "2t", "1t"],
+      "expected": { "checkedCells": 77, "mismatches": 0, "loadingFeeOnlyCells": 7 }
+    }
+  ]
+}
