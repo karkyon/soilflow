@@ -7,7 +7,7 @@ import 'dotenv/config';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
-import { migrate } from './migrate';
+import { API_ROOT, migrate } from './migrate';
 import { hashPassword } from '../src/modules/auth/password';
 
 export const E2E_PASSWORD = 'e2e-correct-horse-battery';
@@ -28,7 +28,7 @@ async function main() {
   const db = new Client({ connectionString: url });
   await db.connect();
   try {
-    await db.query(readFileSync(join(__dirname, '..', 'prisma', 'seed.sql'), 'utf8'));
+    await db.query(readFileSync(join(API_ROOT, 'prisma', 'seed.sql'), 'utf8'));
     await db.query(`UPDATE settings SET mail_from_address = 'seikyu@fujimoto.example', mail_from_name = '株式会社フジモト', tel = '086-000-0000', invoice_registration_no = 'T1234567890123'`);
     const hash = await hashPassword(E2E_PASSWORD);
     const users: [string, string, string, string | null][] = [

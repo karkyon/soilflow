@@ -77,7 +77,8 @@ export class JobsService {
         await this.prisma.$executeRaw`UPDATE jobs SET status = 'QUEUED', run_after = ${new Date(now().getTime() + wait)}, last_error = ${msg}, locked_at = NULL, locked_by = NULL WHERE id = ${j.id}`;
         return false;
       }
-      this.log.error(JSON.stringify({ severity: 'ERROR', alert: 'JOB_FAILED', jobId: Number(j.id), kind: j.kind, error: msg }));
+      // Cloud Logging が jsonPayload として読むように1行の JSON（infra/monitoring.tf のログの指標）
+      console.error(JSON.stringify({ severity: 'ERROR', alert: 'JOB_FAILED', jobId: Number(j.id), kind: j.kind, error: msg }));
       await this.prisma.$executeRaw`UPDATE jobs SET status = 'FAILED', finished_at = ${now()}, last_error = ${msg} WHERE id = ${j.id}`;
       return false;
     }

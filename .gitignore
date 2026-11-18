@@ -8,3 +8,7 @@ coverage/
 *.log
 apps/api/src/generated/
 packages/pdf/dist/
+infra/.terraform/
+infra/.terraform.lock.hcl.bak
+*.tfstate*
+.firebase/

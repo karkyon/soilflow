@@ -5,7 +5,10 @@
  */
 import 'dotenv/config';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
+
+/** apps/api（tsx で動かすときも、dist/ にビルドしたものを動かすときも同じ場所） */
+export const API_ROOT = __dirname.includes(`${sep}dist${sep}`) ? join(__dirname, '..', '..') : join(__dirname, '..');
 import { Client } from 'pg';
 
 export async function migrate(url = process.env.DATABASE_URL, log = console.log) {
@@ -15,7 +18,7 @@ export async function migrate(url = process.env.DATABASE_URL, log = console.log)
     await db.query('CREATE TABLE IF NOT EXISTS sf_schema_migrations (name text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())');
     await db.query('SELECT pg_advisory_lock(73010001)');
     const done = new Set((await db.query('SELECT name FROM sf_schema_migrations')).rows.map((r) => r.name as string));
-    const dir = join(__dirname, '..', 'prisma', 'migrations');
+    const dir = join(API_ROOT, 'prisma', 'migrations');
     for (const name of readdirSync(dir).filter((d) => existsSync(join(dir, d, 'migration.sql'))).sort()) {
       if (done.has(name)) continue;
       await db.query('BEGIN');

@@ -8,12 +8,13 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Client } from 'pg';
 import { hashPassword, temporaryPassword } from '../src/modules/auth/password';
+import { API_ROOT } from '../scripts/migrate';
 
 export async function seed(url = process.env.DATABASE_URL, log = console.log) {
   const db = new Client({ connectionString: url });
   await db.connect();
   try {
-    await db.query(readFileSync(join(__dirname, 'seed.sql'), 'utf8'));
+    await db.query(readFileSync(join(API_ROOT, 'prisma', 'seed.sql'), 'utf8'));
     const login = (process.env.SEED_ADMIN_LOGIN ?? 'admin').toLowerCase();
     const exists = await db.query('SELECT 1 FROM users WHERE role = $1 LIMIT 1', ['ADMIN']);
     if (!exists.rowCount) {

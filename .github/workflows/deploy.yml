@@ -1,0 +1,56 @@
+# デプロイ（12 8章）。main の CI が通ったら検証（stg）へ、v で始まるタグで本番（prod）へ。
+# GitHub の Environment（stg・prod）の変数：GCP_PROJECT・GCP_WIF_PROVIDER・GCP_DEPLOY_SA・PUBLIC_URL（terraform output の値）
+# prod の Environment には「承認が必要（Required reviewers）」を設定する
+name: deploy
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      env: { description: 'stg / prod', required: true, default: stg }
+concurrency: { group: deploy-${{ github.event.inputs.env || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'stg' }}, cancel-in-progress: false }
+permissions: { contents: read, id-token: write }
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.env || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'stg' }}
+    env:
+      REGION: asia-northeast1
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: '${{ github.event.workflow_run.head_sha || github.sha }}' }
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: コンテナを作って Artifact Registry へ
+        run: |
+          IMAGE="$REGION-docker.pkg.dev/${{ vars.GCP_PROJECT }}/soilflow/api"
+          echo "IMAGE=$IMAGE:$SHA" >> "$GITHUB_ENV"
+          gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+          docker build -f apps/api/Dockerfile -t "$IMAGE:$SHA" .
+          docker push "$IMAGE:$SHA"
+      - name: DB の変更（migrate ジョブ）
+        run: |
+          gcloud run jobs update soilflow-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --image "$IMAGE"
+          gcloud run jobs execute soilflow-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --wait
+      - name: API（Cloud Run）
+        run: gcloud run deploy soilflow-api --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --image "$IMAGE" --quiet
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - name: 画面（Firebase Hosting）
+        run: |
+          pnpm install --frozen-lockfile --filter web...
+          pnpm --filter web build
+          npx --yes firebase-tools@14 deploy --only hosting --project "${{ vars.GCP_PROJECT }}" --non-interactive
+      - name: 稼働確認
+        run: |
+          for i in $(seq 1 10); do curl -fsS "${{ vars.PUBLIC_URL }}/api/v1/healthz" && exit 0; sleep 6; done; exit 1
