@@ -131,8 +131,8 @@ resource "google_cloud_run_v2_job" "migrate" {
         }
       }
       containers {
-        image   = local.bootstrap ? "us-docker.pkg.dev/cloudrun/container/job" : local.image
         # 引数を差し替えて初期データにも使う（bootstrap.sh：--args=dist/prisma/seed.js）
+        image   = local.bootstrap ? "us-docker.pkg.dev/cloudrun/container/job" : local.image
         command = local.bootstrap ? null : ["node"]
         args    = local.bootstrap ? null : ["dist/scripts/migrate.js"]
         env {
