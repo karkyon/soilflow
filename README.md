@@ -86,9 +86,14 @@ PERF_API=http://localhost:4200 pnpm --filter api perf                           
 
 ## GCP への構築とデプロイ
 
-1. GCP のプロジェクト（`soilflow-stg`・`soilflow-prod`）と、状態ファイルのバケット `soilflow-<env>-tfstate` を作る
-2. `cd infra && terraform init -backend-config="bucket=soilflow-<env>-tfstate" && terraform apply -var-file=envs/<env>.tfvars -var image_tag=bootstrap`
-3. シークレットの値を入れる：`gcloud secrets versions add freee-client-id --data-file=-`（freee-client-secret・sendgrid-api-key・sendgrid-webhook-public-key も）
-4. Firebase Hosting をプロジェクトに追加し、独自ドメインをつなぐ
-5. GitHub の Environment（stg・prod）に `GCP_PROJECT`・`GCP_WIF_PROVIDER`・`GCP_DEPLOY_SA`（terraform output）・`PUBLIC_URL` を入れ、リポジトリの変数 `DEPLOY_ENABLED=true`
-6. 以後は main へのマージで検証へ、`v*` のタグで本番へ（.github/workflows/deploy.yml）
+GCP の契約者とドメインが決まったら（Q-33）、管理者の PC で次を実行します（gcloud・terraform・gh が必要）。
+
+```bash
+gcloud auth login && gcloud auth application-default login && gh auth login
+infra/bootstrap.sh stg  --project soilflow-stg  --billing <請求先アカウント ID> --domain soilflow-stg.web.app --alert <保守のメール> --admin-email <管理者のメール>
+infra/bootstrap.sh prod --project soilflow-prod --billing <請求先アカウント ID> --domain <フジモト様のドメイン>   --alert <保守のメール> --admin-email <管理者のメール>
+```
+
+`bootstrap.sh` が行うこと：プロジェクトの作成と課金の紐付け → Terraform の状態ファイルのバケット → 最初のコンテナ（Cloud Build）→ `terraform apply`（infra/）→ シークレットの値の入力（freee・SendGrid）→ GitHub の Environment と変数（`DEPLOY_ENABLED=true`）→ 最初のデプロイ（.github/workflows/deploy.yml）→ 初期データと最初の管理者 → 稼働確認と、独自ドメインの DNS に入れるレコードの表示。何度流しても同じ結果になります。
+
+以後は main へのマージで検証へ、`v*` のタグで本番へデプロイします（本番は GitHub の Environment で承認する人を設定）。

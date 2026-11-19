@@ -55,7 +55,7 @@ jobs:
           cd e2e
           PORT=4100 NODE_ENV=development ADAPTERS=fake DATABASE_URL=$E2E_DATABASE_URL STORAGE_DIR=/tmp/zap-files PUBLIC_BASE_URL=http://localhost:3100 SESSION_SECRET=zap node ../apps/api/dist/src/main.js > /tmp/api.log 2>&1 &
           API_ORIGIN=http://localhost:4100 WEB_PORT=3100 node serve.mjs > /tmp/web.log 2>&1 &
-          for i in $(seq 1 30); do curl -fsS http://localhost:3100/api/v1/healthz >/dev/null && break; sleep 1; done
+          for _ in $(seq 1 30); do curl -fsS http://localhost:3100/api/v1/healthz >/dev/null && break; sleep 1; done
           mkdir -p zap && chmod 777 zap
           docker run --rm --network host -v "$PWD/zap:/zap/wrk" ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://localhost:3100/login/ -J zap.json -r zap.html -I
           node -e "const r=require('./zap/zap.json');const hi=r.site.flatMap(s=>s.alerts).filter(a=>Number(a.riskcode)>=3);for(const a of r.site.flatMap(s=>s.alerts))console.log(a.riskdesc,'|',a.name);if(hi.length){console.error('重大・高:',hi.map(a=>a.name).join(', '));process.exit(1)}"

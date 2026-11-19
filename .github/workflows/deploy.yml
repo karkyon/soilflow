@@ -42,7 +42,7 @@ jobs:
           docker push "$IMAGE:$SHA"
       - name: DB の変更（migrate ジョブ）
         run: |
-          gcloud run jobs update soilflow-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --image "$IMAGE"
+          gcloud run jobs update soilflow-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --image "$IMAGE" --command node --args dist/scripts/migrate.js
           gcloud run jobs execute soilflow-migrate --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --wait
       - name: API（Cloud Run）
         run: gcloud run deploy soilflow-api --project "${{ vars.GCP_PROJECT }}" --region "$REGION" --image "$IMAGE" --quiet
@@ -56,4 +56,4 @@ jobs:
           npx --yes firebase-tools@14 deploy --only hosting --project "${{ vars.GCP_PROJECT }}" --non-interactive
       - name: 稼働確認
         run: |
-          for i in $(seq 1 10); do curl -fsS "${{ vars.PUBLIC_URL }}/api/v1/healthz" && exit 0; sleep 6; done; exit 1
+          for _ in $(seq 1 10); do curl -fsS "${{ vars.PUBLIC_URL }}/api/v1/healthz" && exit 0; sleep 6; done; exit 1
