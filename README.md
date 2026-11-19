@@ -71,3 +71,23 @@ pnpm --filter web dev            # 画面 http://localhost:3000 （/api は API 
 - 受付（PC）`/reception/`　サイン用タブレット `/terminal/`　本社 `/office/`
 - `ADAPTERS=fake` で freee・メール・保存先をローカルの代わりの実装で動かします
 - 本番の画面は `pnpm --filter web build` で `apps/web/out` に静的に出力します
+
+## 試験
+
+```bash
+pnpm --filter api test                         # API 結合（PostgreSQL の soilflow_test）
+pnpm --filter @soilflow/billing test           # 計算（正解データ）
+pnpm --filter api build && pnpm --filter web build && pnpm --filter e2e test   # E2E（soilflow_e2e。CHROME_PATH で Chrome を指定できる）
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/soilflow_perf pnpm --filter api perf:seed   # 性能試験のデータ（10年分）
+PORT=4200 DATABASE_URL=…/soilflow_perf LOGIN_RATE_PER_MIN=1000 node apps/api/dist/src/main.js &
+PERF_API=http://localhost:4200 pnpm --filter api perf                                                    # PT-01〜05
+```
+
+## GCP への構築とデプロイ
+
+1. GCP のプロジェクト（`soilflow-stg`・`soilflow-prod`）と、状態ファイルのバケット `soilflow-<env>-tfstate` を作る
+2. `cd infra && terraform init -backend-config="bucket=soilflow-<env>-tfstate" && terraform apply -var-file=envs/<env>.tfvars -var image_tag=bootstrap`
+3. シークレットの値を入れる：`gcloud secrets versions add freee-client-id --data-file=-`（freee-client-secret・sendgrid-api-key・sendgrid-webhook-public-key も）
+4. Firebase Hosting をプロジェクトに追加し、独自ドメインをつなぐ
+5. GitHub の Environment（stg・prod）に `GCP_PROJECT`・`GCP_WIF_PROVIDER`・`GCP_DEPLOY_SA`（terraform output）・`PUBLIC_URL` を入れ、リポジトリの変数 `DEPLOY_ENABLED=true`
+6. 以後は main へのマージで検証へ、`v*` のタグで本番へ（.github/workflows/deploy.yml）
