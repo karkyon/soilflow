@@ -1,0 +1,10 @@
+# gitleaks（ST-10）。既定の規則に、誤検知だけを除く
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "使えないパスワードの一覧（よく使われるもの。13 3章）。鍵ではない"
+regexTarget = "line"
+regexes = [''''password12345', 'passwordpassword''']
+paths = ['''apps/api/src/modules/auth/password\.ts''']
+condition = "AND"
