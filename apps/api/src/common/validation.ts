@@ -13,6 +13,6 @@ export const zReason = z.object({ version: z.number().int(), reason: z.string().
 /** クエリ文字列の真偽値 */
 export const zBoolQ = z.union([z.boolean(), z.enum(['true', 'false', '1', '0'])]).transform((v) => v === true || v === 'true' || v === '1');
 /** クエリ文字列の配列（a,b,c） */
-export const zCsvQ = <T extends ZodTypeAny>(item: T) =>
+export const zCsvQ = <T extends z.ZodType<unknown, string>>(item: T) =>
   z.union([z.string(), z.array(z.string())]).transform((v) => (Array.isArray(v) ? v : v.split(',')).map((s) => s.trim()).filter(Boolean)).pipe(z.array(item));
 export const zIntQ = z.union([z.number(), z.string().regex(/^-?\d+$/)]).transform(Number);

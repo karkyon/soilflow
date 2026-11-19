@@ -2,11 +2,19 @@
   "name": "soilflow",
   "private": true,
   "packageManager": "pnpm@10.28.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "pnpm --filter api dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "typecheck": "pnpm -r typecheck"
+  },
+  "pnpm": {
+    "overrides": {
+      "postcss": "^8.5.23",
+      "uuid@<11.1.1": "^11.1.1"
+    }
   }
 }

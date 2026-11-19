@@ -1,6 +1,7 @@
 # デプロイ（12 8章）。main の CI が通ったら検証（stg）へ、v で始まるタグで本番（prod）へ。
 # GitHub の Environment（stg・prod）の変数：GCP_PROJECT・GCP_WIF_PROVIDER・GCP_DEPLOY_SA・PUBLIC_URL（terraform output の値）
 # prod の Environment には「承認が必要（Required reviewers）」を設定する
+# GCP の準備（infra/ の terraform apply）が済むまで動かさない：リポジトリの変数 DEPLOY_ENABLED=true で有効
 name: deploy
 on:
   workflow_run:
@@ -18,7 +19,7 @@ concurrency:
 permissions: { contents: read, id-token: write }
 jobs:
   deploy:
-    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    if: vars.DEPLOY_ENABLED == 'true' && (github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success')
     runs-on: ubuntu-latest
     environment: ${{ github.event.inputs.env || (startsWith(github.ref, 'refs/tags/v') && 'prod') || 'stg' }}
     env:

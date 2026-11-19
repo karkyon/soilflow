@@ -39,8 +39,8 @@ const INPUT = {
     symbol: z.string().trim().min(1).max(2), displayName: text(20), color: z.string().regex(/^#[0-9a-fA-F]{6}$/), sortOrder: z.number().int(), active: z.boolean().optional(),
     rules: z.array(z.object({ fromItemId: zUuid, toItemId: zUuid })).max(50).optional(),
   }),
-} satisfies Record<MasterKind, z.AnyZodObject>;
-const inputOf = (k: MasterKind): z.AnyZodObject => INPUT[k];
+} satisfies Record<MasterKind, z.ZodObject>;
+const inputOf = (k: MasterKind): z.ZodObject => INPUT[k];
 const MODEL: Record<MasterKind, string> = { customers: 'customer', sites: 'site', billingParties: 'billingParty', vehicles: 'vehicle', items: 'item', vehicleClasses: 'vehicleClass', marks: 'mark' };
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const delegate = (tx: Tx | PrismaService, kind: MasterKind) => (tx as any)[MODEL[kind]];

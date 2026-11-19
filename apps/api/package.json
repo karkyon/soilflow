@@ -13,7 +13,9 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:schema": "tsx scripts/gen-prisma-schema.ts",
     "db:generate": "PRISMA_SCHEMA_ENGINE_BINARY=/bin/true PRISMA_QUERY_ENGINE_LIBRARY=/dev/null prisma generate",
-    "postinstall": "pnpm db:generate"
+    "postinstall": "pnpm db:generate",
+    "perf:seed": "tsx scripts/perf-seed.ts",
+    "perf": "tsx scripts/perf.ts"
   },
   "dependencies": {
     "@google-cloud/kms": "^6.3.0",
@@ -38,7 +40,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "uuid": "^14.0.3",
-    "zod": "^3.25.76"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.2.11",
@@ -54,7 +56,7 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "unplugin-swc": "^2.0.0",
-    "vitest": "^3.2.7",
+    "vitest": "^4.1.12",
     "yaml": "^2.9.1"
   }
 }
