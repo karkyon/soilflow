@@ -4,7 +4,7 @@
 |---|---|
 | 文書番号 | SF-DOC-08 |
 | 版 | 1.0（2026-11-18） |
-| 正本 | `spec/openapi.yaml`（OpenAPI 3.1。検証ツール openapi-spec-validator で検証済み：72パス・84操作・37スキーマ） |
+| 正本 | `spec/openapi.yaml`（OpenAPI 3.1。検証ツール openapi-spec-validator で検証済み：73パス・85操作・37スキーマ） |
 | 関連 | 04 基本設計書、07 DB設計書、09 外部インターフェイス設計書 |
 
 この資料は API の共通の決まりと一覧です。項目の型・必須・値の範囲は openapi.yaml を正とします。
@@ -159,6 +159,7 @@ openapi.yaml から作った一覧です。
 |---|---|---|---|
 | GET | `/dashboard` | 本社の状況（FR-AGG-01） | OFFICE・ADMIN |
 | GET | `/aggregates` | 集計（FR-AGG-03、11 6章） | OFFICE・ADMIN |
+| GET | `/aggregates/trips` | 集計の1行に入った便（日報・伝票・サイン・請求書へたどる）（FR-AGG-04） | OFFICE・ADMIN |
 | GET | `/aggregates/export` | 集計の出力（CSV・Excel）（FR-AGG-05） | OFFICE・ADMIN |
 
 ### 締め・請求書（FR-BIL）（billing）

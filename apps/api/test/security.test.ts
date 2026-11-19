@@ -24,7 +24,7 @@ afterAll(async () => { await app?.close(); });
 
 describe('権限（openapi.yaml の x-roles）', () => {
   it('openapi.yaml の全操作が実装されている', async () => {
-    expect(ops.length).toBe(84);
+    expect(ops.length).toBe(85); // 84 ＋ 集計の元の便（GET /aggregates/trips、FR-AGG-04）
     for (const o of ops) {
       const r = await (as.ADMIN.agent as unknown as Record<string, (u: string) => request.Test>)[o.method](`/api/v1${fill(o.path)}`).set('X-CSRF-Token', as.ADMIN.csrf).send({});
       // 経路がなければ既定の「見つかりません」になる（業務の 404 は「請求書が見つかりません」など）
