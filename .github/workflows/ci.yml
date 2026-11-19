@@ -14,7 +14,7 @@ jobs:
     env:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/soilflow_test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
@@ -39,7 +39,7 @@ jobs:
     env:
       E2E_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/soilflow_e2e
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: pnpm }
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: infra } }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: hashicorp/setup-terraform@v3
         with: { terraform_version: 1.13.4 }
       - run: terraform fmt -check -recursive
@@ -75,7 +75,7 @@ jobs:
   security:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - name: 秘密の情報が入っていないか（ST-10 gitleaks）
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.28.0 git /repo --config /repo/.gitleaks.toml --redact --no-banner -v
