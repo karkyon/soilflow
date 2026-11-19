@@ -36,6 +36,7 @@
 | 18 WBS・開発スケジュール | [docs/18_WBS・開発スケジュール.md](docs/18_WBS・開発スケジュール.md) |
 | 19 未決事項・変更管理台帳 | [docs/ledger/19_未決事項・変更管理台帳.md](docs/ledger/19_未決事項・変更管理台帳.md) |
 | 19 トレーサビリティ表 | [docs/ledger/19_トレーサビリティ表.md](docs/ledger/19_トレーサビリティ表.md) |
+| 20 操作マニュアル（受付編・本社編・管理者編） | [docs/20_操作マニュアル.md](docs/20_操作マニュアル.md)（Word：docs/word/20_操作マニュアル.docx。画面写真は `pnpm --filter e2e manual` で撮り直し） |
 | Word 版（全資料） | [docs/word/](docs/word/) |
 
 ## ディレクトリ構成（予定）

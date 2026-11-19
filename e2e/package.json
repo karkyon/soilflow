@@ -3,7 +3,8 @@
   "private": true,
   "scripts": {
     "test": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "manual": "playwright test -c playwright.manual.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
