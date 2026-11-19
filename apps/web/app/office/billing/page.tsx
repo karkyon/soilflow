@@ -58,7 +58,7 @@ export default function BillingPage() {
             <div>
               <div className="mb-1 text-[13px] font-bold text-navy">問題点（{pre.data?.problems.length ?? 0}）</div>
               {!pre.data?.problems.length ? <p className="text-sm text-ok">問題はありません。</p> : (
-                <div className="space-y-1">{pre.data.problems.map((p, i) => <Alert key={i} tone={BLOCKING.includes(p.kind) ? 'err' : p.kind === 'ALREADY_INVOICED' ? 'info' : 'warn'}>{p.message}</Alert>)}</div>
+                <div className="space-y-1">{pre.data.problems.map((p, i) => <Alert key={i} tone={BLOCKING.includes(p.kind) ? 'err' : ['ALREADY_INVOICED', 'CASH_SETTLED'].includes(p.kind) ? 'info' : 'warn'}>{p.message}</Alert>)}</div>
               )}
             </div>
           </div>

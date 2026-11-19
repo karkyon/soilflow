@@ -36,6 +36,8 @@ export default function SettingsPage() {
         <Field label="税率（%）"><Input type="number" disabled={!admin} value={String(v.taxRate)} onChange={(e) => set('taxRate', Number(e.target.value))} /></Field>
         <Field label="消費税の端数処理" hint="請求書ごとに1回（インボイス制度）"><Select disabled={!admin} value={String(v.taxRounding)} onChange={(e) => set('taxRounding', e.target.value)}><option value="floor">切り捨て</option><option value="round">四捨五入</option><option value="ceil">切り上げ</option></Select></Field>
         <label className="mt-6 flex items-center gap-2 text-sm"><input type="checkbox" disabled={!admin} checked={!!v.slipWarningEnabled} onChange={(e) => set('slipWarningEnabled', e.target.checked)} /> 締めの前に伝票未発行の便を警告</label></div></Card>
+      <Card title="現金のお客さま（設計案：Q-29）"><label className="flex items-center gap-2 text-sm"><input type="checkbox" disabled={!admin} checked={!!v.cashPaymentEnabled} onChange={(e) => set('cashPaymentEnabled', e.target.checked)} /> 現金の領収書を使う</label>
+        <p className="mt-2 text-xs text-gray-600">請求先マスタで支払い方法を「現金」にした請求先の伝票から、受付がその場で領収書を出せます。領収書を出した伝票の便は、月の締めの請求書に入りません。</p></Card>
       <Card title="受入日報"><div className="grid grid-cols-3 gap-3">
         <Field label="最初の列（時）"><Input type="number" min={0} max={23} disabled={!admin} value={String(v.reportFirstHour)} onChange={(e) => set('reportFirstHour', Number(e.target.value))} /></Field>
         <Field label="最後の列（時）" hint="範囲外の時刻の便は端の列に表示"><Input type="number" min={0} max={23} disabled={!admin} value={String(v.reportLastHour)} onChange={(e) => set('reportLastHour', Number(e.target.value))} /></Field></div></Card>

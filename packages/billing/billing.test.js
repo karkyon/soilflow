@@ -70,4 +70,23 @@ for (const c of golden.cases) {
     });
   }
 }
+
+/* 現金の領収書（FR-BIL-15、設計案）。正解データではなく、決まりの確認 */
+{
+  const pt = [{ id: 'p1', effectiveFrom: '2023-04-01', entries: [{ itemId: 'i1', vehicleClassId: 'v10', unitPrice: 8250 }, { itemId: 'i2', vehicleClassId: 'v10', unitPrice: 12100 }] }];
+  ok('現金：明細と消費税（領収書ごとに1回）', () => {
+    const r = B.buildCashReceipt([{ id: 'a', date: '2026-02-05', itemId: 'i1', vehicleClassId: 'v10' }, { id: 'b', date: '2026-02-05', itemId: 'i1', vehicleClassId: 'v10' }, { id: 'c', date: '2026-02-05', itemId: 'i2', vehicleClassId: 'v10' }], pt, 10, 'floor');
+    assert.deepStrictEqual({ n: r.lines.length, subtotal: r.subtotal, tax: r.taxAmount, total: r.total }, { n: 2, subtotal: 28600, tax: 2860, total: 31460 });
+  });
+  ok('現金：単価がない便があれば作らない', () => assert.deepStrictEqual(B.buildCashReceipt([{ id: 'x', date: '2022-01-01', itemId: 'i1', vehicleClassId: 'v10' }], pt, 10, 'floor'), { error: 'PRICE_MISSING', tripIds: ['x'] }));
+  ok('現金：番号と収入印紙', () => { assert.strictEqual(B.cashReceiptNo('2026-02-05', 7), 'R-2602-007'); assert.strictEqual(B.needsRevenueStamp(49999), false); assert.strictEqual(B.needsRevenueStamp(50000), true); });
+  ok('現金：受け取り済みの便は締めで請求書に入れない', () => {
+    const ctx = { rows: [{ id: 'r', customerId: 'c', siteId: null, itemId: 'i1', vehicleClassId: 'v10' }], slips: [], sites: [], customers: [{ id: 'c', defaultBillingPartyId: 'bp' }],
+      billingParties: [{ id: 'bp', name: '現金のお客さま', kana: 'げんきん', closingDay: 0, paymentMonthOffset: 1, paymentDay: 0 }], items: [{ id: 'i1', sortOrder: 1 }], vehicleClasses: [{ id: 'v10', sortOrder: 1 }],
+      priceTables: pt, markRules: [], trips: [{ id: 't1', rowId: 'r', date: '2026-02-05', time: '09:00', markId: null, status: 'ACTIVE', slipId: 's', cashReceiptId: 'cr1' }, { id: 't2', rowId: 'r', date: '2026-02-06', time: '09:00', markId: null, status: 'ACTIVE', slipId: null }] };
+    const r = B.buildInvoices('2026-02', ctx);
+    assert.deepStrictEqual(r.invoices.map((i) => i.tripIds), [['t2']]);
+    assert.deepStrictEqual(r.problems.map((p) => p.kind), ['CASH_SETTLED']);
+  });
+}
 console.log(`\n${passed} 件すべて一致`);

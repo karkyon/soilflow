@@ -15,7 +15,7 @@ export function settingsDto(s: Setting) {
     mailFromAddress: s.mailFromAddress, mailFromName: s.mailFromName, mailReplyTo: s.mailReplyTo,
     mailSubjectTemplate: s.mailSubjectTemplate, mailBodyTemplate: s.mailBodyTemplate,
     reportFirstHour: s.reportFirstHour, reportLastHour: s.reportLastHour, taxRate: s.taxRate, taxRounding: s.taxRounding as 'floor' | 'round' | 'ceil',
-    slipWarningEnabled: s.slipWarningEnabled, version: s.version,
+    slipWarningEnabled: s.slipWarningEnabled, cashPaymentEnabled: s.cashPaymentEnabled, version: s.version,
   };
 }
 export type SettingsDto = ReturnType<typeof settingsDto>;
@@ -32,6 +32,7 @@ const SettingsInput = z.object({
   reportFirstHour: z.number().int().min(0).max(23).optional(), reportLastHour: z.number().int().min(0).max(23).optional(),
   taxRate: z.number().int().min(0).max(100).optional(), taxRounding: z.enum(['floor', 'round', 'ceil']).optional(),
   slipWarningEnabled: z.boolean().optional(),
+  cashPaymentEnabled: z.boolean().optional(),
 }).strict();
 
 @Injectable()

@@ -88,8 +88,11 @@ export class BillingService {
       if (existing.has(bp)) continue;
       out.push({ kind: 'ALREADY_INVOICED', billingPartyId: bp, tripIds, message: `${bpName.get(bp)}：別の請求書に含まれている便が ${tripIds.length} 台あるため、飛ばしました` });
     }
+    for (const [bp, tripIds] of group('CASH_SETTLED')) {
+      out.push({ kind: 'CASH_SETTLED', billingPartyId: bp, tripIds, message: `${bpName.get(bp)}：現金で受け取り済みの便 ${tripIds.length} 台は請求書に入れません（FR-BIL-15）` });
+    }
     for (const [bp, inv] of existing) {
-      const left = ctx.trips.filter((t) => !t.lockedInvoiceId && this.bpOf(ctx, t) === bp && this.inPeriod(ctx, bp, month, t.date)).map((t) => t.id);
+      const left = ctx.trips.filter((t) => !t.lockedInvoiceId && !t.cashReceiptId && this.bpOf(ctx, t) === bp && this.inPeriod(ctx, bp, month, t.date)).map((t) => t.id);
       out.push({
         kind: 'ALREADY_INVOICED', billingPartyId: bp, tripIds: left,
         message: left.length
@@ -110,15 +113,20 @@ export class BillingService {
       SELECT s.slip_no, s.billing_party_id AS bp, array_agg(t.id) AS ids FROM slips s JOIN trips t ON t.slip_id = s.id
       WHERE s.status = 'AWAITING_SIGNATURE' AND s.slip_date BETWEEN ${from}::date AND ${to}::date GROUP BY s.slip_no, s.billing_party_id`;
     for (const a of awaiting) if (targetBpIds.has(a.bp)) out.push({ kind: 'AWAITING_SIGNATURE', billingPartyId: a.bp, tripIds: a.ids, message: `伝票 ${a.slip_no} がサイン待ちのままです` });
+    // 現金の請求先なのに領収書のない便（受け取り忘れ）。請求書は作る
+    const cashBps = new Set((await db.billingParty.findMany({ where: { paymentMethod: 'CASH' }, select: { id: true } })).map((b) => b.id));
+    const unpaid = new Map<string, string[]>();
+    for (const t of periodTrips) { const bp = this.bpOf(ctx, t)!; if (cashBps.has(bp) && !t.cashReceiptId && !t.lockedInvoiceId) unpaid.set(bp, [...(unpaid.get(bp) ?? []), t.id]); }
+    for (const [bp, ids] of unpaid) out.push({ kind: 'CASH_UNRECEIVED', billingPartyId: bp, tripIds: ids, message: `${bpName.get(bp)}：現金のお客さまで、領収書を出していない便が ${ids.length} 台あります（このまま締めると請求書に入ります）` });
     const inactive = new Map<string, string[]>();
     for (const t of ctx.trips) {
       const bp = this.bpOf(ctx, t); const b = ctx.billingParties.find((x) => x.id === bp);
-      if (b && b.active === false && !t.lockedInvoiceId && this.inPeriod(ctx, b.id, month, t.date)) inactive.set(b.id, [...(inactive.get(b.id) ?? []), t.id]);
+      if (b && b.active === false && !t.lockedInvoiceId && !t.cashReceiptId && this.inPeriod(ctx, b.id, month, t.date)) inactive.set(b.id, [...(inactive.get(b.id) ?? []), t.id]);
     }
     for (const [bp, ids] of inactive) out.push({ kind: 'INACTIVE_BILLING_PARTY', billingPartyId: bp, tripIds: ids, message: `${bpName.get(bp)}：無効にした請求先に便が ${ids.length} 台残っています` });
     const bps = await db.billingParty.findMany({ where: { id: { in: [...targetBpIds] } } });
     const conn = await db.freeeConnection.findUnique({ where: { id: 1 } });
-    const withTrips = new Set(periodTrips.map((t) => this.bpOf(ctx, t)));
+    const withTrips = new Set(periodTrips.filter((t) => !t.cashReceiptId).map((t) => this.bpOf(ctx, t)));
     for (const b of bps.filter((x) => withTrips.has(x.id))) {
       if (!b.mailTo.length) out.push({ kind: 'MAIL_TO_MISSING', billingPartyId: b.id, tripIds: [], message: `${b.name}：請求書の送付先メールが登録されていません` });
       if (conn && conn.status !== 'DISCONNECTED' && ['UNMAPPED', 'CANDIDATE'].includes(b.freeeMappingStatus)) out.push({ kind: 'FREEE_PARTNER_UNMAPPED', billingPartyId: b.id, tripIds: [], message: `${b.name}：freee の取引先が対応付けられていません` });

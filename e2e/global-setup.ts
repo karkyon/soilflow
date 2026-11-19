@@ -47,6 +47,10 @@ export default async function globalSetup() {
   await office.call('POST', '/masters/vehicles', { customerId: cKaya.id, vehicleNo: '1234', defaultVehicleClassId: v10.id });
   await office.call('POST', '/masters/vehicles', { customerId: cKaya.id, vehicleNo: '5678', defaultVehicleClassId: v10.id });
   await office.call('POST', '/masters/vehicles', { customerId: cSanko.id, vehicleNo: '2222', defaultVehicleClassId: v4.id });
+  // 現金のお客さま（FR-BIL-15、E2E-10）
+  const cash = await office.call('POST', '/masters/billingParties', { name: '現金のお客さま', kana: 'げんきんのおきゃくさま', paymentMethod: 'CASH' });
+  const cCash = await office.call('POST', '/masters/customers', { name: '個人のお客さま', kana: 'こじんのおきゃくさま', defaultBillingPartyId: cash.id });
+  await office.call('POST', '/masters/vehicles', { customerId: cCash.id, vehicleNo: '3333', defaultVehicleClassId: v4.id });
 
   // 先月の便（締め・確認・メール・freee・取消して再発行の試験）
   const date = lastMonthDay(10);

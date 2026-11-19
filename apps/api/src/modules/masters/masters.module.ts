@@ -27,6 +27,7 @@ const INPUT = {
     postalCode: z.string().regex(/^[0-9]{3}-[0-9]{4}$/, '郵便番号は 000-0000').nullable().optional().or(z.literal('').transform(() => null)),
     address: optText(), mailTo: emails.optional(), mailCc: emails.optional(),
     closingDay: z.number().int().min(0).max(28).optional(), paymentMonthOffset: z.number().int().min(0).max(3).optional(), paymentDay: z.number().int().min(0).max(31).optional(),
+    paymentMethod: z.enum(['INVOICE', 'CASH']).optional(), // 現金のお客さま（FR-BIL-15）
     note: optText(), active: z.boolean().optional(),
   }),
   vehicles: z.object({ customerId: zUuid, vehicleNo: z.string().trim().min(1).max(20), defaultVehicleClassId: zUuid.nullable().optional(), active: z.boolean().optional() }),
@@ -213,6 +214,7 @@ export class MastersService {
       const d = parse(INPUT.billingParties, {
         name: r.name, kana: r.kana || r.name, honorific: r.honorific || undefined, postalCode: r.postalCode || null, address: r.address || null,
         mailTo: list(r.mailTo), mailCc: list(r.mailCc), closingDay: int(r.closingDay), paymentMonthOffset: int(r.paymentMonthOffset), paymentDay: int(r.paymentDay), note: r.note || null,
+        paymentMethod: !r.paymentMethod ? undefined : /^(現金|CASH)$/i.test(r.paymentMethod) ? 'CASH' : /^(請求書|掛け?|INVOICE)$/i.test(r.paymentMethod) ? 'INVOICE' : (() => { throw new AppError('VALIDATION_ERROR', `支払い方法は「請求書」か「現金」：${r.paymentMethod}`); })(),
       });
       const ex = await tx.billingParty.findFirst({ where: { name: d.name, active: true } });
       if (ex) { await tx.billingParty.update({ where: { id: ex.id }, data: d }); return 'updated'; }
@@ -315,7 +317,7 @@ const pickKeys = (o: Record<string, unknown>, ks: string[]) => Object.fromEntrie
 const HEADERS: Record<string, Record<string, string>> = {
   customers: { 会社名: 'name', 客先名: 'name', 名前: 'name', 読みがな: 'kana', 既定の請求先: 'billingPartyName', 請求先: 'billingPartyName', 表示順: 'sortOrder', 備考: 'note' },
   sites: { 会社名: 'customerName', 客先: 'customerName', 客先名: 'customerName', 現場名: 'name', 現場: 'name', 読みがな: 'kana', 既定の請求先: 'billingPartyName', 請求先: 'billingPartyName' },
-  billingParties: { 名称: 'name', 名前: 'name', 読みがな: 'kana', 敬称: 'honorific', 郵便番号: 'postalCode', 住所: 'address', 送付先メール: 'mailTo', 締め日: 'closingDay', 支払月: 'paymentMonthOffset', 支払日: 'paymentDay', 備考: 'note' },
+  billingParties: { 名称: 'name', 名前: 'name', 読みがな: 'kana', 敬称: 'honorific', 郵便番号: 'postalCode', 住所: 'address', 送付先メール: 'mailTo', 支払い方法: 'paymentMethod', 締め日: 'closingDay', 支払月: 'paymentMonthOffset', 支払日: 'paymentDay', 備考: 'note' },
   vehicles: { 会社名: 'customerName', 客先: 'customerName', 客先名: 'customerName', 車番: 'vehicleNo', よく使う車格: 'vehicleClassName', 車格: 'vehicleClassName' },
 };
 export function headerKey(kind: string, h: string) {

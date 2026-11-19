@@ -6,6 +6,8 @@ export interface BRow { id: string; customerId: string; siteId: string | null; i
 export interface BTrip {
   id: string; rowId: string; date: string; time: string; markId: string | null;
   status: 'ACTIVE' | 'CANCELLED'; slipId: string | null; lockedInvoiceId?: string | null;
+  /** 現金の領収書で受け取り済み（FR-BIL-15）。請求書に入れない */
+  cashReceiptId?: string | null;
 }
 export interface BSlip { id: string; status: string; billingPartyId: string }
 export interface BSite { id: string; name: string; kana?: string; defaultBillingPartyId: string | null }
@@ -34,8 +36,8 @@ export interface BInvoice {
   lines: BInvoiceLine[]; subtotal: number; taxRate: number; taxAmount: number; total: number; tripIds: string[];
 }
 export interface BProblem {
-  kind: 'ROW_MISSING' | 'BILLING_PARTY_MISSING' | 'ALREADY_INVOICED' | 'PRICE_MISSING' | 'INVOICE_BLOCKED';
-  tripId?: string; billingPartyId?: string; date?: string; itemId?: string; vehicleClassId?: string; invoiceId?: string;
+  kind: 'ROW_MISSING' | 'BILLING_PARTY_MISSING' | 'ALREADY_INVOICED' | 'PRICE_MISSING' | 'INVOICE_BLOCKED' | 'CASH_SETTLED';
+  tripId?: string; billingPartyId?: string; date?: string; itemId?: string; vehicleClassId?: string; invoiceId?: string; cashReceiptId?: string;
 }
 
 export interface FreeeMapping { accountItemId: number; taxCode: number; freeeItemId: number | null }
@@ -62,3 +64,11 @@ export function tripCounts(rows: { id: string; customerId: string }[], trips: { 
   byRow: Record<string, number>; byCustomer: Record<string, number>; total: number;
 };
 export function hourSlot(time: string, firstHour: number, lastHour: number): number;
+
+/* 現金の領収書（FR-BIL-15） */
+export interface CashLine { itemId: string; vehicleClassId: string; unitPrice: number; tripCount: number; amount: number }
+export function buildCashReceipt(
+  trips: { id: string; date: string; itemId: string; vehicleClassId: string }[], priceTables: BPriceTable[], taxRate: number, rounding: Rounding,
+): { lines: CashLine[]; subtotal: number; taxRate: number; taxAmount: number; total: number; error?: undefined } | { error: 'PRICE_MISSING'; tripIds: string[] };
+export function cashReceiptNo(date: string, seq: number): string;
+export function needsRevenueStamp(subtotal: number): boolean;

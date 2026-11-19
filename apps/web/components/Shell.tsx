@@ -41,7 +41,7 @@ export function TopBar({ app, nav }: { app: string; nav?: { href: string; label:
 
 type NavItem = { href: string; label: string; admin?: boolean };
 const OFFICE_NAV: { group: string; items: NavItem[] }[] = [
-  { group: '業務', items: [{ href: '/office/', label: '状況' }, { href: '/office/report/', label: '受入日報' }, { href: '/office/slips/', label: '伝票' }, { href: '/office/aggregates/', label: '集計' }, { href: '/office/billing/', label: '請求' }] },
+  { group: '業務', items: [{ href: '/office/', label: '状況' }, { href: '/office/report/', label: '受入日報' }, { href: '/office/slips/', label: '伝票' }, { href: '/office/aggregates/', label: '集計' }, { href: '/office/billing/', label: '請求' }, { href: '/office/cash/', label: '現金の領収書' }] },
   { group: 'freee 連携', items: [{ href: '/office/freee/', label: 'freee 登録' }, { href: '/office/freee/settings/', label: '連携の設定', admin: true }, { href: '/office/freee/partners/', label: '取引先の対応付け' }, { href: '/office/freee/items/', label: '品目の対応付け', admin: true }, { href: '/office/freee/logs/', label: '登録の履歴' }] },
   { group: 'マスタ', items: [
     { href: '/office/masters/?kind=customers', label: '客先' }, { href: '/office/masters/?kind=sites', label: '現場' }, { href: '/office/masters/?kind=billingParties', label: '請求先' },

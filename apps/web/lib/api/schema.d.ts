@@ -386,6 +386,94 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/slips/{id}/cash-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 現金の領収書の金額（出す前の確認）
+         * @description 設定 cashPaymentEnabled が true、伝票の請求先の支払い方法が CASH、伝票がサイン済・紙で印刷・紙サイン登録済のとき。受付も金額を見る（FR-RCV-20 の例外）。
+         */
+        get: operations["getCashPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/slips/{id}/cash-receipt": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 現金で受け取り、領収書（RPT-07）を出す。この伝票の便は請求書に入れない */
+        post: operations["issueCashReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-receipts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 領収書の一覧と日ごとの現金の合計（受付は今日の分だけ） */
+        get: operations["listCashReceipts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-receipts/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** 領収書の PDF（お客さま用と控え） */
+        get: operations["getCashReceiptPdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cash-receipts/{id}/void": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** 領収書の取消（返金・誤り）。伝票の便は請求の対象に戻る */
+        post: operations["voidCashReceipt"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/terminal/current-slip": {
         parameters: {
             query?: never;
@@ -1435,6 +1523,20 @@ export interface components {
             hasPaperScan?: boolean;
             lockedByInvoice?: boolean;
             version: number;
+            /**
+             * @description 請求先の支払い方法（FR-BIL-15）
+             * @enum {string}
+             */
+            paymentMethod?: "INVOICE" | "CASH";
+            cashReceipt?: {
+                /** Format: uuid */
+                id?: string;
+                receiptNo?: string;
+                total?: number;
+                version?: number;
+            } | null;
+            /** @description 今この伝票から現金の領収書を出せる（設定が有効・請求先が現金・便が固定・領収書がまだない） */
+            cashReceivable?: boolean;
         };
         /** @description 金額を含めない（FR-SGN-02） */
         TerminalSlip: {
@@ -1448,9 +1550,63 @@ export interface components {
             lines?: components["schemas"]["SlipLine"][];
             status?: components["schemas"]["SlipStatus"];
         };
+        CashLine: {
+            itemName?: string;
+            vehicleClassName?: string;
+            tripCount?: number;
+            unitPrice?: number;
+            amount?: number;
+        };
+        CashPreview: {
+            /** Format: uuid */
+            slipId?: string;
+            slipNo?: string;
+            /** Format: date */
+            receiptDate?: string;
+            addresseeName?: string;
+            billingPartyName?: string;
+            lines?: components["schemas"]["CashLine"][];
+            subtotal?: number;
+            taxRate?: number;
+            taxAmount?: number;
+            total?: number;
+            /** @description 税抜5万円以上は収入印紙が要る */
+            revenueStamp?: boolean;
+            tripCount?: number;
+        };
+        CashReceipt: {
+            /** Format: uuid */
+            id?: string;
+            /** @description R-YYMM-NNN */
+            receiptNo?: string;
+            /** Format: date */
+            receiptDate?: string;
+            /** Format: uuid */
+            slipId?: string;
+            slipNo?: string;
+            siteName?: string | null;
+            billingPartyName?: string;
+            addresseeName?: string;
+            lines?: components["schemas"]["CashLine"][];
+            subtotal?: number;
+            taxRate?: number;
+            taxAmount?: number;
+            total?: number;
+            revenueStamp?: boolean;
+            receivedByName?: string;
+            /** Format: date-time */
+            receivedAt?: string;
+            /** @enum {string} */
+            status?: "ACTIVE" | "VOIDED";
+            voidReason?: string | null;
+            /** Format: date-time */
+            voidedAt?: string | null;
+            voidedByName?: string | null;
+            version?: number;
+        };
         BillingProblem: {
             /** @enum {string} */
-            kind?: "PRICE_MISSING" | "INVOICE_BLOCKED" | "UNSLIPPED_TRIPS" | "AWAITING_SIGNATURE" | "MAIL_TO_MISSING" | "ALREADY_INVOICED" | "INACTIVE_BILLING_PARTY" | "FREEE_PARTNER_UNMAPPED";
+            kind?: "PRICE_MISSING" | "INVOICE_BLOCKED" | "UNSLIPPED_TRIPS" | "AWAITING_SIGNATURE" | "MAIL_TO_MISSING" | "ALREADY_INVOICED" | "INACTIVE_BILLING_PARTY" | "FREEE_PARTNER_UNMAPPED" | "CASH_SETTLED" | "CASH_UNRECEIVED";
             /** Format: uuid */
             billingPartyId?: string | null;
             tripIds?: string[];
@@ -1743,6 +1899,8 @@ export interface components {
             /** @enum {string} */
             taxRounding?: "floor" | "round" | "ceil";
             slipWarningEnabled?: boolean;
+            /** @description 現金のお客さまの領収書（FR-BIL-15、設計案）を使う */
+            cashPaymentEnabled?: boolean;
             version?: number;
         };
     };
@@ -2537,6 +2695,143 @@ export interface operations {
         requestBody?: never;
         responses: {
             200: components["responses"]["FileUrl"];
+        };
+    };
+    getCashPreview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashPreview"];
+                };
+            };
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    issueCashReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @description 宛名（省くと伝票の宛名） */
+                    addresseeName?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 出した領収書 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashReceipt"];
+                };
+            };
+            422: components["responses"]["Unprocessable"];
+        };
+    };
+    listCashReceipts: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                status?: "ACTIVE" | "VOIDED";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        from?: string;
+                        /** Format: date */
+                        to?: string;
+                        items?: components["schemas"]["CashReceipt"][];
+                        byDate?: {
+                            /** Format: date */
+                            date?: string;
+                            count?: number;
+                            total?: number;
+                        }[];
+                        total?: {
+                            count?: number;
+                            total?: number;
+                        };
+                    };
+                };
+            };
+        };
+    };
+    getCashReceiptPdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: components["responses"]["FileUrl"];
+        };
+    };
+    voidCashReceipt: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["Id"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    version: number;
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description 取り消した領収書 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CashReceipt"];
+                };
+            };
+            409: components["responses"]["Conflict"];
         };
     };
     getCurrentSlip: {

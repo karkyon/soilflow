@@ -15,6 +15,7 @@ tags:
   - { name: auth, description: ログイン・セッション }
   - { name: reports, description: 受入日報・行・便（FR-RCV） }
   - { name: slips, description: 伝票（FR-SLP） }
+  - { name: cash, description: 現金のお客さまの領収書（FR-BIL-15、設計案） }
   - { name: terminal, description: サイン端末（FR-SGN） }
   - { name: aggregates, description: 集計・状況（FR-AGG） }
   - { name: billing, description: 締め・請求書（FR-BIL） }
@@ -409,6 +410,80 @@ paths:
         - { name: kind, in: query, schema: { type: string, enum: [signed, office, scan, paper], default: signed }, description: 'signed＝お客さま控え（RPT-02）、office＝フジモト様控え（RPT-03）、scan＝紙伝票のスキャン、paper＝紙伝票（RPT-04）' }
       responses:
         '200': { $ref: '#/components/responses/FileUrl' }
+
+  # ------------------------------------------------------------------ cash（現金のお客さま、FR-BIL-15・設計案【回答待ち Q-29】）
+  /slips/{id}/cash-preview:
+    get:
+      tags: [cash]
+      operationId: getCashPreview
+      summary: 現金の領収書の金額（出す前の確認）
+      description: 設定 cashPaymentEnabled が true、伝票の請求先の支払い方法が CASH、伝票がサイン済・紙で印刷・紙サイン登録済のとき。受付も金額を見る（FR-RCV-20 の例外）。
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/CashPreview' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /slips/{id}/cash-receipt:
+    post:
+      tags: [cash]
+      operationId: issueCashReceipt
+      summary: 現金で受け取り、領収書（RPT-07）を出す。この伝票の便は請求書に入れない
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, properties: { addresseeName: { type: string, maxLength: 100, description: 宛名（省くと伝票の宛名） } } }
+      responses:
+        '201': { description: 出した領収書, content: { application/json: { schema: { $ref: '#/components/schemas/CashReceipt' } } } }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+  /cash-receipts:
+    get:
+      tags: [cash]
+      operationId: listCashReceipts
+      summary: 領収書の一覧と日ごとの現金の合計（受付は今日の分だけ）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: status, in: query, schema: { type: string, enum: [ACTIVE, VOIDED] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  from: { type: string, format: date }
+                  to: { type: string, format: date }
+                  items: { type: array, items: { $ref: '#/components/schemas/CashReceipt' } }
+                  byDate: { type: array, items: { type: object, properties: { date: { type: string, format: date }, count: { type: integer }, total: { type: integer } } } }
+                  total: { type: object, properties: { count: { type: integer }, total: { type: integer } } }
+  /cash-receipts/{id}/pdf:
+    get:
+      tags: [cash]
+      operationId: getCashReceiptPdf
+      summary: 領収書の PDF（お客さま用と控え）
+      x-roles: [RECEPTION, OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { $ref: '#/components/responses/FileUrl' }
+  /cash-receipts/{id}/void:
+    post:
+      tags: [cash]
+      operationId: voidCashReceipt
+      summary: 領収書の取消（返金・誤り）。伝票の便は請求の対象に戻る
+      x-roles: [OFFICE, ADMIN]
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [version, reason], additionalProperties: false, properties: { version: { type: integer }, reason: { type: string, minLength: 1, maxLength: 200 } } }
+      responses:
+        '200': { description: 取り消した領収書, content: { application/json: { schema: { $ref: '#/components/schemas/CashReceipt' } } } }
+        '409': { $ref: '#/components/responses/Conflict' }
 
   # ------------------------------------------------------------------ terminal
   /terminal/current-slip:
@@ -1242,6 +1317,9 @@ components:
         hasPaperScan: { type: boolean }
         lockedByInvoice: { type: boolean }
         version: { type: integer }
+        paymentMethod: { type: string, enum: [INVOICE, CASH], description: 請求先の支払い方法（FR-BIL-15） }
+        cashReceipt: { type: [object, 'null'], properties: { id: { type: string, format: uuid }, receiptNo: { type: string }, total: { type: integer }, version: { type: integer } } }
+        cashReceivable: { type: boolean, description: 今この伝票から現金の領収書を出せる（設定が有効・請求先が現金・便が固定・領収書がまだない） }
     TerminalSlip:
       type: object
       description: 金額を含めない（FR-SGN-02）
@@ -1253,10 +1331,52 @@ components:
         siteName: { type: [string, 'null'] }
         lines: { type: array, items: { $ref: '#/components/schemas/SlipLine' } }
         status: { $ref: '#/components/schemas/SlipStatus' }
+    CashLine:
+      type: object
+      properties: { itemName: { type: string }, vehicleClassName: { type: string }, tripCount: { type: integer }, unitPrice: { type: integer }, amount: { type: integer } }
+    CashPreview:
+      type: object
+      properties:
+        slipId: { type: string, format: uuid }
+        slipNo: { type: string }
+        receiptDate: { type: string, format: date }
+        addresseeName: { type: string }
+        billingPartyName: { type: string }
+        lines: { type: array, items: { $ref: '#/components/schemas/CashLine' } }
+        subtotal: { type: integer }
+        taxRate: { type: integer }
+        taxAmount: { type: integer }
+        total: { type: integer }
+        revenueStamp: { type: boolean, description: 税抜5万円以上は収入印紙が要る }
+        tripCount: { type: integer }
+    CashReceipt:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        receiptNo: { type: string, description: R-YYMM-NNN }
+        receiptDate: { type: string, format: date }
+        slipId: { type: string, format: uuid }
+        slipNo: { type: string }
+        siteName: { type: [string, 'null'] }
+        billingPartyName: { type: string }
+        addresseeName: { type: string }
+        lines: { type: array, items: { $ref: '#/components/schemas/CashLine' } }
+        subtotal: { type: integer }
+        taxRate: { type: integer }
+        taxAmount: { type: integer }
+        total: { type: integer }
+        revenueStamp: { type: boolean }
+        receivedByName: { type: string }
+        receivedAt: { type: string, format: date-time }
+        status: { type: string, enum: [ACTIVE, VOIDED] }
+        voidReason: { type: [string, 'null'] }
+        voidedAt: { type: [string, 'null'], format: date-time }
+        voidedByName: { type: [string, 'null'] }
+        version: { type: integer }
     BillingProblem:
       type: object
       properties:
-        kind: { type: string, enum: [PRICE_MISSING, INVOICE_BLOCKED, UNSLIPPED_TRIPS, AWAITING_SIGNATURE, MAIL_TO_MISSING, ALREADY_INVOICED, INACTIVE_BILLING_PARTY, FREEE_PARTNER_UNMAPPED] }
+        kind: { type: string, enum: [PRICE_MISSING, INVOICE_BLOCKED, UNSLIPPED_TRIPS, AWAITING_SIGNATURE, MAIL_TO_MISSING, ALREADY_INVOICED, INACTIVE_BILLING_PARTY, FREEE_PARTNER_UNMAPPED, CASH_SETTLED, CASH_UNRECEIVED] }
         billingPartyId: { type: [string, 'null'], format: uuid }
         tripIds: { type: array, items: { type: string, format: uuid } }
         message: { type: string }
@@ -1506,4 +1626,5 @@ components:
         taxRate: { type: integer }
         taxRounding: { type: string, enum: [floor, round, ceil] }
         slipWarningEnabled: { type: boolean }
+        cashPaymentEnabled: { type: boolean, description: 現金のお客さまの領収書（FR-BIL-15、設計案）を使う }
         version: { type: integer }

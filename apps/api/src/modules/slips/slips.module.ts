@@ -26,7 +26,9 @@ export class SlipsService {
     const lines = await db.slipLine.findMany({ where: { slipId: { in: ids } }, orderBy: [{ slipId: 'asc' }, { lineNo: 'asc' }] });
     const trips = await db.$queryRaw<{ id: string; slip_id: string; inv: string | null }[]>`
       SELECT t.id, t.slip_id, i.status AS inv FROM trips t LEFT JOIN invoices i ON i.id = t.invoice_id WHERE t.slip_id = ANY(${ids}::uuid[]) AND t.status = 'ACTIVE' ORDER BY t.trip_time, t.id`;
-    const bps = await db.billingParty.findMany({ where: { id: { in: slips.map((s) => s.billingPartyId) } }, select: { id: true, name: true } });
+    const bps = await db.billingParty.findMany({ where: { id: { in: slips.map((s) => s.billingPartyId) } }, select: { id: true, name: true, paymentMethod: true } });
+    const cashOn = (await db.setting.findUnique({ where: { id: 1 }, select: { cashPaymentEnabled: true } }))?.cashPaymentEnabled ?? false;
+    const crs = await db.cashReceipt.findMany({ where: { slipId: { in: ids }, status: 'ACTIVE' }, select: { id: true, slipId: true, receiptNo: true, total: true, version: true } });
     return slips.map((s) => ({
       id: s.id, slipNo: s.slipNo, slipDate: ymd(s.slipDate), status: s.status, customerId: s.customerId, addresseeName: s.addresseeName,
       siteId: s.siteId, siteName: s.siteName, billingPartyId: s.billingPartyId, billingPartyName: bps.find((b) => b.id === s.billingPartyId)?.name ?? '',
@@ -37,6 +39,10 @@ export class SlipsService {
       signedAt: isoJst(s.signedAt), hasPaperScan: !!s.paperScanObjectKey,
       lockedByInvoice: trips.some((t) => t.slip_id === s.id && t.inv !== null && INVOICE_LOCKING.includes(t.inv)),
       cancelReason: s.cancelReason, version: s.version,
+      // 現金のお客さま（FR-BIL-15）
+      paymentMethod: bps.find((b) => b.id === s.billingPartyId)?.paymentMethod ?? 'INVOICE',
+      cashReceipt: ((c) => (c ? { id: c.id, receiptNo: c.receiptNo, total: Number(c.total), version: c.version } : null))(crs.find((c) => c.slipId === s.id)),
+      cashReceivable: cashOn && bps.find((b) => b.id === s.billingPartyId)?.paymentMethod === 'CASH' && ['SIGNED', 'PAPER_PRINTED', 'PAPER_SIGNED'].includes(s.status) && !crs.some((c) => c.slipId === s.id),
     }));
   }
   async one(db: Tx | PrismaService, id: string) {
@@ -242,6 +248,7 @@ export class SlipsService {
       const s = await this.load(tx, id);
       if (s.status === 'CANCELLED') throw invalidState('すでに取り消した伝票です');
       if (s.status === 'AWAITING_SIGNATURE') throw invalidState('サイン待ちの伝票は、先にタブレットへの送信を取りやめてください');
+      if (await tx.cashReceipt.count({ where: { slipId: id, status: 'ACTIVE' } })) throw invalidState('現金の領収書を出した伝票です。先に本社で領収書を取り消してください');
       const locked = await tx.$queryRaw<{ n: bigint }[]>`
         SELECT count(*) AS n FROM trips t JOIN invoices i ON i.id = t.invoice_id WHERE t.slip_id = ${id}::uuid AND i.status IN ('SENDING','SENT','SEND_ERROR')`;
       if (Number(locked[0].n)) throw new AppError('SLIP_LOCKED_BY_INVOICE', '送信済の請求書に含まれる便がある伝票は取り消せません。先に請求書を取り消してください');

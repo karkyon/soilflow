@@ -201,6 +201,44 @@ test('E2E-09 集計 → 元の便 → その日の日報（FR-AGG-04）', async 
   await expect(page.getByRole('button', { name: '1234', exact: true })).toBeVisible();
 });
 
+test('E2E-10 現金のお客さま：設定 → 紙伝票 → 現金で受け取る → 領収書 → 本社の一覧（FR-BIL-15）', async ({ browser, page }) => {
+  await login(page, 'admin', /\/office\/$/);
+  await page.goto('/office/settings/');
+  await page.getByLabel('現金の領収書を使う').check();
+  await page.getByRole('button', { name: '保存' }).click();
+  await toast(page, '設定を保存しました');
+
+  reception ??= await newUser(browser, 'reception', /\/reception\/$/);
+  await reception.getByRole('link', { name: '受入日報' }).click();
+  await reception.getByRole('button', { name: '＋ 行を追加' }).click();
+  const d = dialog(reception);
+  await d.getByRole('button', { name: '個人のお客さま' }).click();
+  await d.getByLabel('車番').fill('3333');
+  await d.getByLabel('品名').selectOption({ label: '残土' });
+  await d.getByLabel('車格').selectOption({ label: '4t' });
+  await d.getByRole('button', { name: '追加する' }).click();
+  await toast(reception, /行を追加しました（個人のお客さま 3333）/);
+  await nowCell(reception, '3333').click();
+  await toast(reception, /を記入しました$/);
+  await reception.getByRole('button', { name: '伝票を発行' }).click();
+  await dialog(reception).getByRole('button', { name: /個人のお客さま/ }).click();
+  await expectPdfOpened(reception, () => dialog(reception).getByRole('button', { name: '紙伝票で印刷' }).click());
+
+  await reception.getByRole('link', { name: '伝票一覧' }).click();
+  const tr = reception.locator('tbody tr').filter({ hasText: '個人のお客さま' });
+  await expect(tr.getByText('現金', { exact: true })).toBeVisible();
+  await tr.getByRole('button', { name: '現金で受け取る' }).click();
+  const cd = dialog(reception);
+  await expect(cd.getByText(/^¥[\d,]+$/)).toBeVisible();
+  await expectPdfOpened(reception, () => cd.getByRole('button', { name: /円を受け取って領収書を出す/ }).click());
+  await toast(reception, /領収書 R-\d{4}-001 を出しました/);
+  await expect(tr.getByRole('button', { name: /^領収書 R-/ })).toBeVisible();
+  await expect(reception.getByText(/本日の現金：領収書 1 枚/)).toBeVisible();
+
+  await page.goto('/office/cash/');
+  await expect(page.locator('tbody tr').filter({ hasText: '個人のお客さま' }).getByText('有効')).toBeVisible();
+});
+
 test('E2E-08 オフラインの表示（通信を切る）', async ({ browser }) => {
   reception ??= await newUser(browser, 'reception', /\/reception\/$/);
   await reception.getByRole('link', { name: '受入日報' }).click();

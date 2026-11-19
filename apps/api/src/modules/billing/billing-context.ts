@@ -15,9 +15,10 @@ export interface LoadedContext extends BillingContext {
  * そのため、便ごとの切り替え規則を作って billing.js に渡す。
  */
 export async function loadContext(db: Tx | PrismaService, from: string, to: string, o: { excludeInvoiceId?: string } = {}): Promise<LoadedContext> {
-  const trips = await db.$queryRaw<{ id: string; report_row_id: string; trip_date: Date; trip_time: Date; status: 'ACTIVE' | 'CANCELLED'; slip_id: string | null; invoice_id: string | null; inv_status: string | null; effective_item_id: string }[]>`
-    SELECT t.id, t.report_row_id, t.trip_date, t.trip_time, t.status, t.slip_id, t.invoice_id, i.status AS inv_status, t.effective_item_id
+  const trips = await db.$queryRaw<{ id: string; report_row_id: string; trip_date: Date; trip_time: Date; status: 'ACTIVE' | 'CANCELLED'; slip_id: string | null; invoice_id: string | null; inv_status: string | null; effective_item_id: string; cash_receipt_id: string | null }[]>`
+    SELECT t.id, t.report_row_id, t.trip_date, t.trip_time, t.status, t.slip_id, t.invoice_id, i.status AS inv_status, t.effective_item_id, cr.id AS cash_receipt_id
     FROM trips t LEFT JOIN invoices i ON i.id = t.invoice_id
+    LEFT JOIN cash_receipts cr ON cr.slip_id = t.slip_id AND cr.status = 'ACTIVE'
     WHERE t.trip_date BETWEEN ${from}::date AND ${to}::date AND t.status = 'ACTIVE'`;
   const rowIds = [...new Set(trips.map((t) => t.report_row_id))];
   const slipIds = [...new Set(trips.map((t) => t.slip_id).filter((x): x is string => !!x))];
@@ -36,7 +37,7 @@ export async function loadContext(db: Tx | PrismaService, from: string, to: stri
     let markId: string | null = null;
     if (row && row.itemId !== t.effective_item_id) { markId = `eff:${t.id}`; markRules.push({ markId, fromItemId: row.itemId, toItemId: t.effective_item_id }); }
     const locked = t.invoice_id && t.inv_status !== 'VOIDED' && t.invoice_id !== o.excludeInvoiceId ? t.invoice_id : null;
-    return { id: t.id, rowId: t.report_row_id, date: ymd(t.trip_date), time: hhmm(t.trip_time), markId, status: t.status, slipId: t.slip_id, lockedInvoiceId: locked };
+    return { id: t.id, rowId: t.report_row_id, date: ymd(t.trip_date), time: hhmm(t.trip_time), markId, status: t.status, slipId: t.slip_id, lockedInvoiceId: locked, cashReceiptId: t.cash_receipt_id };
   });
   return {
     rows: rows.map((r) => ({ id: r.id, customerId: r.customerId, siteId: r.siteId, itemId: r.itemId, vehicleClassId: r.vehicleClassId })),

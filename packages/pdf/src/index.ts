@@ -229,3 +229,61 @@ export async function invoicePdf(x: InvoicePdfInput): Promise<Buffer> {
     ],
   });
 }
+
+/* ---------------------------------------------------------------- RPT-07 領収書（現金のお客さま、FR-BIL-15・設計案） */
+export interface CashReceiptPdfInput {
+  receiptNo: string; receiptDate: string; addresseeName: string; slipNo: string; siteName: string | null;
+  lines: { itemName: string; vehicleClassName: string; tripCount: number; unitPrice: number; amount: number }[];
+  subtotal: number; taxRate: number; taxAmount: number; total: number; revenueStamp: boolean; receivedByName: string;
+  issuer: { companyName: string; officeName: string; postalCode: string | null; address: string | null; tel: string | null; registrationNo: string | null };
+}
+function receiptHalf(x: CashReceiptPdfInput, copy: 'customer' | 'office'): Content[] {
+  const i = x.issuer;
+  const body: TableCell[][] = [[
+    { text: '品目', bold: true, fillColor: '#eeeeee' }, { text: '車格', bold: true, fillColor: '#eeeeee' }, { text: '台数', bold: true, alignment: 'right', fillColor: '#eeeeee' },
+    { text: '単価', bold: true, alignment: 'right', fillColor: '#eeeeee' }, { text: '金額（税抜）', bold: true, alignment: 'right', fillColor: '#eeeeee' },
+  ], ...x.lines.map((l) => [l.itemName, l.vehicleClassName, { text: yen(l.tripCount), alignment: 'right' }, { text: yen(l.unitPrice), alignment: 'right' }, { text: yen(l.amount), alignment: 'right' }] as TableCell[])];
+  return [
+    {
+      columns: [
+        { width: '*', stack: [
+          { text: copy === 'customer' ? '領 収 書' : '領 収 書（控え）', fontSize: 18, bold: true, characterSpacing: 4 },
+          { text: `${x.addresseeName} 様`, fontSize: 14, bold: true, margin: [0, 8, 0, 0] },
+        ] },
+        { width: 200, alignment: 'right', stack: [
+          { text: `No. ${x.receiptNo}` }, { text: jdateShort(x.receiptDate) }, { text: `伝票 ${x.slipNo}`, fontSize: 8.5 },
+        ] },
+      ],
+    },
+    { margin: [0, 8, 0, 4], table: { widths: ['*'], body: [[{ text: `¥${yen(x.total)} −（税込）`, fontSize: 20, bold: true, alignment: 'center', margin: [0, 6, 0, 6] }]] } },
+    { text: `但し　受入・納品の代金として${x.siteName ? `（現場：${x.siteName}）` : ''}　上記の金額を正に領収いたしました。`, margin: [0, 0, 0, 6] },
+    { table: { headerRows: 1, widths: ['*', 50, 40, 60, 80], body }, layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5 }, fontSize: 9 },
+    {
+      margin: [0, 6, 0, 0],
+      columns: [
+        x.revenueStamp
+          ? { width: 70, table: { widths: [60], heights: [60], body: [[{ text: '収入\n印紙', alignment: 'center', color: '#888888', margin: [0, 18, 0, 0] }]] } }
+          : { width: 70, text: '' },
+        { width: '*', margin: [10, 0, 0, 0], stack: [
+          { text: i.companyName, bold: true }, { text: i.officeName }, { text: [i.postalCode ? `〒${i.postalCode} ` : '', i.address ?? ''].join('') }, { text: i.tel ? `TEL ${i.tel}` : '' },
+          ...(i.registrationNo ? [{ text: `登録番号 ${i.registrationNo}` }] : []), { text: `受領者　${x.receivedByName}`, margin: [0, 2, 0, 0] },
+        ] },
+        { width: 210, table: { widths: ['*', 70], body: [
+          [`${x.taxRate}%対象（税抜）`, { text: yen(x.subtotal), alignment: 'right' }],
+          [`消費税（${x.taxRate}%）`, { text: yen(x.taxAmount), alignment: 'right' }],
+          [{ text: '合計（税込）', bold: true }, { text: yen(x.total), bold: true, alignment: 'right' }],
+        ] }, fontSize: 9 },
+      ],
+    },
+  ];
+}
+export async function cashReceiptPdf(x: CashReceiptPdfInput): Promise<Buffer> {
+  return render({
+    pageSize: 'A4', pageMargins: [12 * MM, 10 * MM, 12 * MM, 10 * MM], info: { title: `領収書 ${x.receiptNo}` },
+    content: [
+      ...receiptHalf(x, 'customer'),
+      { text: '- - - - - - - - - - - - - - - - - - - - - - - - - - - - 切り取り - - - - - - - - - - - - - - - - - - - - - - - - - - - -', alignment: 'center', color: '#999999', fontSize: 8, margin: [0, 18, 0, 18] },
+      ...receiptHalf(x, 'office'),
+    ],
+  });
+}

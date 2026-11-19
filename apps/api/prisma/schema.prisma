@@ -48,6 +48,7 @@ model BillingParty {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   version Int @default(1)
+  paymentMethod String @default(dbgenerated("'INVOICE'::text")) @map("payment_method")
   @@map("billing_parties")
 }
 
@@ -58,6 +59,39 @@ model BillingRun {
   executedAt DateTime @default(now()) @map("executed_at") @db.Timestamptz(6)
   result Json
   @@map("billing_runs")
+}
+
+model CashReceiptCounter {
+  ym String @id @db.Char(4)
+  lastNo Int @map("last_no")
+  @@map("cash_receipt_counters")
+}
+
+model CashReceipt {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  receiptNo String @unique @map("receipt_no")
+  slipId String @map("slip_id") @db.Uuid
+  billingPartyId String @map("billing_party_id") @db.Uuid
+  receiptDate DateTime @map("receipt_date") @db.Date
+  addresseeName String @map("addressee_name")
+  lines Json
+  subtotal BigInt
+  taxRate Int @map("tax_rate") @db.SmallInt
+  taxRounding String @map("tax_rounding")
+  taxAmount BigInt @map("tax_amount")
+  total BigInt
+  receivedBy String @map("received_by") @db.Uuid
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(6)
+  pdfObjectKey String? @map("pdf_object_key")
+  pdfSha256 String? @map("pdf_sha256")
+  status String @default(dbgenerated("'ACTIVE'::text"))
+  voidReason String? @map("void_reason")
+  voidedAt DateTime? @map("voided_at") @db.Timestamptz(6)
+  voidedBy String? @map("voided_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  version Int @default(1)
+  @@map("cash_receipts")
 }
 
 model Customer {
@@ -383,6 +417,7 @@ model Setting {
   updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
   updatedBy String? @map("updated_by") @db.Uuid
   version Int @default(1)
+  cashPaymentEnabled Boolean @default(false) @map("cash_payment_enabled")
   @@map("settings")
 }
 

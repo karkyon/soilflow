@@ -16,6 +16,7 @@ import { PdfModule } from './modules/pdf/pdf.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { SlipsModule } from './modules/slips/slips.module';
+import { CashModule } from './modules/cash/cash.module';
 import { SystemModule } from './modules/system/system.module';
 import { UsersModule } from './modules/users/users.module';
 
@@ -29,7 +30,7 @@ export class SharedSettingsModule {}
 
 @Module({
   imports: [
-    CoreModule, AdaptersModule, SharedSettingsModule, JobsModule, PdfModule, AuthModule, UsersModule, MastersModule, ReportsModule, SlipsModule,
+    CoreModule, AdaptersModule, SharedSettingsModule, JobsModule, PdfModule, AuthModule, UsersModule, MastersModule, ReportsModule, SlipsModule, CashModule,
     BillingModule, MailModule, FreeeModule, AggregatesModule, SystemModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: AuthGuard }, { provide: APP_FILTER, useClass: AppExceptionFilter }],

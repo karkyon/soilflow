@@ -4,7 +4,7 @@
 |---|---|
 | 文書番号 | SF-DOC-08 |
 | 版 | 1.0（2026-11-18） |
-| 正本 | `spec/openapi.yaml`（OpenAPI 3.1。検証ツール openapi-spec-validator で検証済み：73パス・85操作・37スキーマ） |
+| 正本 | `spec/openapi.yaml`（OpenAPI 3.1。検証ツール openapi-spec-validator で検証済み：78パス・90操作・40スキーマ） |
 | 関連 | 04 基本設計書、07 DB設計書、09 外部インターフェイス設計書 |
 
 この資料は API の共通の決まりと一覧です。項目の型・必須・値の範囲は openapi.yaml を正とします。
@@ -152,6 +152,16 @@ openapi.yaml から作った一覧です。
 |---|---|---|---|
 | GET | `/terminal/current-slip` | この端末に表示する伝票（なければ null）（FR-SGN-01） | SIGN_TERMINAL |
 | POST | `/terminal/slips/{id}/sign` | サインの確定（FR-SGN-04） | SIGN_TERMINAL |
+
+### 現金のお客さま（FR-BIL-15、設計案）（cash）
+
+| メソッド | パス | 内容 | 使える区分 |
+|---|---|---|---|
+| GET | `/slips/{id}/cash-preview` | 領収書の金額（出す前の確認） | RECEPTION・OFFICE・ADMIN |
+| POST | `/slips/{id}/cash-receipt` | 現金で受け取り、領収書を出す | RECEPTION・OFFICE・ADMIN |
+| GET | `/cash-receipts` | 領収書の一覧と日ごとの合計（受付は今日だけ） | RECEPTION・OFFICE・ADMIN |
+| GET | `/cash-receipts/{id}/pdf` | 領収書の PDF（RPT-07） | RECEPTION・OFFICE・ADMIN |
+| POST | `/cash-receipts/{id}/void` | 領収書の取消 | OFFICE・ADMIN |
 
 ### 集計・状況（FR-AGG）（aggregates）
 

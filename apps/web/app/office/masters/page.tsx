@@ -8,7 +8,7 @@ import { api, ApiError } from '@/lib/api/client';
 import { BillingParty, Customer, Item, useMaster, VehicleClass } from '@/lib/masters';
 
 type Opt = { value: string; label: string };
-type FieldDef = { key: string; label: string; type: 'text' | 'number' | 'select' | 'bool' | 'emails' | 'color' | 'textarea' | 'rules'; required?: boolean; options?: 'billingParties' | 'customers' | 'vehicleClasses' | 'direction' | 'honorific' | 'closingDay' | 'paymentMonth' | 'paymentDay'; hint?: string; list?: boolean; createOnly?: boolean; nullable?: boolean; step?: string };
+type FieldDef = { key: string; label: string; type: 'text' | 'number' | 'select' | 'bool' | 'emails' | 'color' | 'textarea' | 'rules'; required?: boolean; options?: 'billingParties' | 'customers' | 'vehicleClasses' | 'direction' | 'honorific' | 'closingDay' | 'paymentMonth' | 'paymentDay' | 'paymentMethod'; hint?: string; list?: boolean; createOnly?: boolean; nullable?: boolean; step?: string };
 const DEFS: Record<string, { title: string; scr: string; fields: FieldDef[]; note?: string }> = {
   customers: { title: '客先マスタ', scr: 'SCR-50', note: '既定の請求先を空のまま登録すると、同じ名前の請求先を作って既定にします（ケースA）。運搬会社で請求は元請のときは元請を選びます（ケースB）', fields: [
     { key: 'name', label: '会社名', type: 'text', required: true, list: true }, { key: 'kana', label: '読みがな', type: 'text', required: true, list: true, hint: 'ひらがな。日報の頭文字の絞り込みに使います' },
@@ -21,7 +21,9 @@ const DEFS: Record<string, { title: string; scr: string; fields: FieldDef[]; not
     { key: 'postalCode', label: '郵便番号', type: 'text', hint: '000-0000', nullable: true }, { key: 'address', label: '住所', type: 'text', nullable: true },
     { key: 'mailTo', label: '送付先メール', type: 'emails', list: true, hint: '複数はカンマ区切り' }, { key: 'mailCc', label: '送付先メール（CC）', type: 'emails' },
     { key: 'closingDay', label: '締め日', type: 'select', options: 'closingDay', list: true }, { key: 'paymentMonthOffset', label: '支払月', type: 'select', options: 'paymentMonth' },
-    { key: 'paymentDay', label: '支払日', type: 'select', options: 'paymentDay', list: true }, { key: 'note', label: '備考', type: 'textarea', nullable: true }] },
+    { key: 'paymentDay', label: '支払日', type: 'select', options: 'paymentDay', list: true },
+    { key: 'paymentMethod', label: '支払い方法', type: 'select', options: 'paymentMethod', required: true, list: true, hint: '現金：伝票ごとにその場で領収書を出し、締めの請求書に入れない（システム設定で有効にしたとき）' },
+    { key: 'note', label: '備考', type: 'textarea', nullable: true }] },
   vehicles: { title: '車番マスタ', scr: 'SCR-53', note: '日報で新しい車番を入れると自動で登録されます', fields: [
     { key: 'customerId', label: '客先', type: 'select', options: 'customers', required: true, list: true, createOnly: true }, { key: 'vehicleNo', label: '車番', type: 'text', required: true, list: true },
     { key: 'defaultVehicleClassId', label: 'よく使う車格', type: 'select', options: 'vehicleClasses', list: true, nullable: true }] },
@@ -39,6 +41,7 @@ const DEFS: Record<string, { title: string; scr: string; fields: FieldDef[]; not
 const STATIC: Record<string, Opt[]> = {
   direction: [{ value: 'RECEIVE', label: '受入れ' }, { value: 'DELIVER', label: '納品' }],
   honorific: ['御中', '様', '殿'].map((x) => ({ value: x, label: x })),
+  paymentMethod: [{ value: 'INVOICE', label: '請求書（月の締め）' }, { value: 'CASH', label: '現金（その場で領収書）' }],
   closingDay: [{ value: '0', label: '月末' }, ...Array.from({ length: 28 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}日` }))],
   paymentMonth: [['0', '当月'], ['1', '翌月'], ['2', '翌々月'], ['3', '3か月後']].map(([value, label]) => ({ value, label })),
   paymentDay: [{ value: '0', label: '末日' }, ...Array.from({ length: 31 }, (_, i) => ({ value: String(i + 1), label: `${i + 1}日` }))],
@@ -97,7 +100,7 @@ function EditDialog({ kind, def, rec, onClose, opts, items, onSaved }: { kind: s
   useEffect(() => {
     if (!rec) return;
     setErr(null); setFieldErr({});
-    if (rec === 'new') setV({ ...(kind === 'billingParties' ? { honorific: '御中', closingDay: 0, paymentMonthOffset: 1, paymentDay: 0, mailTo: [], mailCc: [] } : {}), ...(kind === 'marks' ? { color: '#2c6e3f', rules: [] } : {}), ...(kind === 'items' ? { direction: 'RECEIVE', smallVehicleFeeRef: 0 } : {}) });
+    if (rec === 'new') setV({ ...(kind === 'billingParties' ? { honorific: '御中', closingDay: 0, paymentMonthOffset: 1, paymentDay: 0, paymentMethod: 'INVOICE', mailTo: [], mailCc: [] } : {}), ...(kind === 'marks' ? { color: '#2c6e3f', rules: [] } : {}), ...(kind === 'items' ? { direction: 'RECEIVE', smallVehicleFeeRef: 0 } : {}) });
     else setV({ ...rec });
   }, [rec, kind]);
   if (!rec) return null;

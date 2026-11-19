@@ -97,7 +97,8 @@
    * 対象月 ym の締めで請求書を作る（4章）。
    * ctx: { rows, trips, slips, sites, customers, billingParties, items, vehicleClasses, priceTables, markRules,
    *        taxRate=10, rounding='floor', billingPartyIds?（対象を絞る場合）, seqStart=1 }
-   * trips の各要素：{ id, rowId, date, time, markId, status: 'ACTIVE'|'CANCELLED', slipId, lockedInvoiceId? }
+   * trips の各要素：{ id, rowId, date, time, markId, status: 'ACTIVE'|'CANCELLED', slipId, lockedInvoiceId?, cashReceiptId? }
+   * cashReceiptId がある便は現金で受け取り済み（FR-BIL-15）のため請求書に入れない
    * 戻り値：{ invoices, problems }
    */
   function buildInvoices(ym, ctx) {
@@ -119,6 +120,7 @@
       if (!bpId) { problems.push({ kind: 'BILLING_PARTY_MISSING', tripId: t.id, date: t.date }); continue; }
       const per = periods.get(bpId);
       if (!per || t.date < per.from || t.date > per.to) continue;
+      if (t.cashReceiptId) { problems.push({ kind: 'CASH_SETTLED', tripId: t.id, billingPartyId: bpId, cashReceiptId: t.cashReceiptId }); continue; }
       if (t.lockedInvoiceId) { problems.push({ kind: 'ALREADY_INVOICED', tripId: t.id, billingPartyId: bpId, invoiceId: t.lockedInvoiceId }); continue; }
       const itemId = effectiveItemId(row.itemId, t.markId, ctx.markRules);
       const price = unitPrice(t.date, itemId, row.vehicleClassId, ctx.priceTables);
@@ -159,6 +161,35 @@
     for (const id of blocked) problems.push({ kind: 'INVOICE_BLOCKED', billingPartyId: id });
     return { invoices, problems };
   }
+
+  /* ---------- 現金の領収書（FR-BIL-15、設計案） ---------- */
+
+  /**
+   * 伝票の便から領収書の金額を作る。明細は「品目×車格×単価」ごと、消費税は領収書ごとに1回（4.3 と同じ）。
+   * trips: [{ id, date, itemId, vehicleClassId }]（品目は印で切り替えた後）
+   * 単価がない便があれば { error: 'PRICE_MISSING', tripIds }
+   */
+  function buildCashReceipt(trips, priceTables, taxRate, rounding) {
+    const groups = new Map(), missing = [];
+    for (const t of trips) {
+      const price = unitPrice(t.date, t.itemId, t.vehicleClassId, priceTables);
+      if (price === null) { missing.push(t.id); continue; }
+      const key = [t.itemId, t.vehicleClassId, price].join('|');
+      if (!groups.has(key)) groups.set(key, { itemId: t.itemId, vehicleClassId: t.vehicleClassId, unitPrice: price, tripCount: 0, amount: 0 });
+      const g = groups.get(key); g.tripCount += 1; g.amount += price;
+    }
+    if (missing.length) return { error: 'PRICE_MISSING', tripIds: missing };
+    const lines = [...groups.values()];
+    const subtotal = lines.reduce((a, l) => a + l.amount, 0);
+    const taxAmount = taxOf(subtotal, taxRate, rounding || 'floor');
+    return { lines, subtotal, taxRate, taxAmount, total: subtotal + taxAmount };
+  }
+
+  /** 領収書の番号「R-年月(4桁)-連番(3桁)」 */
+  function cashReceiptNo(date, seq) { return `R-${date.slice(2, 4)}${date.slice(5, 7)}-${String(seq).padStart(3, '0')}`; }
+
+  /** 収入印紙が要るか（受取金額のうち税抜が5万円以上。消費税額が区分して書かれている領収書の扱い） */
+  function needsRevenueStamp(subtotal) { return subtotal >= 50000; }
 
   /* ---------- freee の取引の明細（5章） ---------- */
 
@@ -208,5 +239,5 @@
     return Math.min(Math.max(h, firstHour), lastHour);
   }
 
-  return { billingPeriod, dueDate, effectiveItemId, priceTableFor, unitPrice, referencePrice, billingPartyIdFor, taxOf, invoiceNo, buildInvoices, freeeDetails, tripCounts, hourSlot };
+  return { billingPeriod, dueDate, effectiveItemId, priceTableFor, unitPrice, referencePrice, billingPartyIdFor, taxOf, invoiceNo, buildInvoices, freeeDetails, tripCounts, hourSlot, buildCashReceipt, cashReceiptNo, needsRevenueStamp };
 });
