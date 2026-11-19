@@ -454,6 +454,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/aggregates/trips": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 集計の1行に入った便（FR-AGG-04）
+         * @description 集計の行の `keys` をそのまま渡すと、その行に入った便を返す（日報・伝票・サイン・請求書へたどる）。現場なし・請求先なしは空文字。2,000件まで。
+         */
+        get: operations["getAggregateTrips"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/aggregates/export": {
         parameters: {
             query?: never;
@@ -2662,6 +2682,63 @@ export interface operations {
                             amount?: number;
                             priceMissingCount?: number;
                         };
+                    };
+                };
+            };
+        };
+    };
+    getAggregateTrips: {
+        parameters: {
+            query: {
+                from: string;
+                to: string;
+                customerId?: string;
+                billingPartyId?: string;
+                date?: string;
+                customer?: string;
+                site?: string;
+                billingParty?: string;
+                item?: string;
+                vehicleClass?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        total: number;
+                        truncated: boolean;
+                        items: {
+                            /** Format: uuid */
+                            id?: string;
+                            /** Format: date */
+                            date?: string;
+                            time?: string;
+                            customerName?: string;
+                            siteName?: string | null;
+                            vehicleNo?: string;
+                            itemName?: string;
+                            vehicleClassName?: string;
+                            markSymbol?: string | null;
+                            unitPrice?: number | null;
+                            billingPartyName?: string | null;
+                            /** Format: uuid */
+                            slipId?: string | null;
+                            slipNo?: string | null;
+                            slipStatus?: string | null;
+                            hasScan?: boolean;
+                            /** Format: uuid */
+                            invoiceId?: string | null;
+                            invoiceNo?: string | null;
+                        }[];
                     };
                 };
             };

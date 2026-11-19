@@ -482,6 +482,58 @@ paths:
                 properties:
                   rows: { type: array, items: { type: object, properties: { keys: { type: object, additionalProperties: { type: string } }, labels: { type: object, additionalProperties: { type: string } }, tripCount: { type: integer }, amount: { type: integer }, priceMissingCount: { type: integer } } } }
                   total: { type: object, properties: { tripCount: { type: integer }, amount: { type: integer }, priceMissingCount: { type: integer } } }
+  /aggregates/trips:
+    get:
+      tags: [aggregates]
+      operationId: getAggregateTrips
+      summary: 集計の1行に入った便（FR-AGG-04）
+      description: |
+        集計の行の `keys` をそのまま渡すと、その行に入った便を返す（日報・伝票・サイン・請求書へたどる）。現場なし・請求先なしは空文字。2,000件まで。
+      x-roles: [OFFICE, ADMIN]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: customerId, in: query, schema: { type: string, format: uuid } }
+        - { name: billingPartyId, in: query, schema: { type: string, format: uuid } }
+        - { name: date, in: query, schema: { type: string, format: date } }
+        - { name: customer, in: query, schema: { type: string, format: uuid } }
+        - { name: site, in: query, schema: { type: string } }
+        - { name: billingParty, in: query, schema: { type: string } }
+        - { name: item, in: query, schema: { type: string, format: uuid } }
+        - { name: vehicleClass, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, truncated, items]
+                properties:
+                  total: { type: integer }
+                  truncated: { type: boolean }
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        date: { type: string, format: date }
+                        time: { type: string }
+                        customerName: { type: string }
+                        siteName: { type: string, nullable: true }
+                        vehicleNo: { type: string }
+                        itemName: { type: string }
+                        vehicleClassName: { type: string }
+                        markSymbol: { type: string, nullable: true }
+                        unitPrice: { type: integer, nullable: true }
+                        billingPartyName: { type: string, nullable: true }
+                        slipId: { type: string, format: uuid, nullable: true }
+                        slipNo: { type: string, nullable: true }
+                        slipStatus: { type: string, nullable: true }
+                        hasScan: { type: boolean }
+                        invoiceId: { type: string, format: uuid, nullable: true }
+                        invoiceNo: { type: string, nullable: true }
   /aggregates/export:
     get:
       tags: [aggregates]

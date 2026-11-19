@@ -18,6 +18,7 @@ const KEY_JA: Record<Key, string> = { date: '日付', customer: '客先', site: 
 interface TripFact {
   id: string; date: string; time: string; customerId: string; siteId: string | null; billingPartyId: string | null; itemId: string; vehicleClassId: string;
   unitPrice: number | null; markSymbol: string | null; slipNo: string | null; invoiceNo: string | null; vehicleNo: string;
+  slipId: string | null; slipStatus: string | null; hasScan: boolean; invoiceId: string | null;
 }
 
 @Injectable()
@@ -29,8 +30,8 @@ export class AggregatesService {
     if (from > to) throw new AppError('VALIDATION_ERROR', '期間の始まりと終わりが逆です');
     if ((new Date(to).getTime() - new Date(from).getTime()) / 86400000 > 400) throw new AppError('VALIDATION_ERROR', '期間は1年までにしてください');
     const ctx = await loadContext(this.prisma, from, to);
-    const extra = await this.prisma.$queryRaw<{ id: string; symbol: string | null; slip_no: string | null; slip_status: string | null; invoice_no: string | null; inv_status: string | null; fixed_price: number | null; vehicle_no: string }[]>`
-      SELECT t.id, m.symbol, s.slip_no, s.status AS slip_status, i.invoice_no, i.status AS inv_status, it.unit_price AS fixed_price, v.vehicle_no
+    const extra = await this.prisma.$queryRaw<{ id: string; symbol: string | null; slip_id: string | null; slip_no: string | null; slip_status: string | null; has_scan: boolean; invoice_id: string | null; invoice_no: string | null; inv_status: string | null; fixed_price: number | null; vehicle_no: string }[]>`
+      SELECT t.id, m.symbol, s.id AS slip_id, s.slip_no, s.status AS slip_status, (s.paper_scan_object_key IS NOT NULL) AS has_scan, i.id AS invoice_id, i.invoice_no, i.status AS inv_status, it.unit_price AS fixed_price, v.vehicle_no
       FROM trips t JOIN report_rows r ON r.id = t.report_row_id JOIN vehicles v ON v.id = r.vehicle_id
       LEFT JOIN marks m ON m.id = t.mark_id LEFT JOIN slips s ON s.id = t.slip_id LEFT JOIN invoices i ON i.id = t.invoice_id
       LEFT JOIN invoice_trips it ON it.invoice_id = t.invoice_id AND it.trip_id = t.id
@@ -43,6 +44,7 @@ export class AggregatesService {
       return {
         id: t.id, date: t.date, time: t.time, customerId: row.customerId, siteId: row.siteId, billingPartyId: billingPartyIdFor(t, row, ctx), itemId: item, vehicleClassId: row.vehicleClassId,
         unitPrice: fixed ?? unitPrice(t.date, item, row.vehicleClassId, ctx.priceTables), markSymbol: e.symbol, slipNo: e.slip_status !== 'CANCELLED' ? e.slip_no : null, invoiceNo: e.invoice_no, vehicleNo: e.vehicle_no,
+        slipId: e.slip_status !== 'CANCELLED' ? e.slip_id : null, slipStatus: e.slip_status !== 'CANCELLED' ? e.slip_status : null, hasScan: !!e.has_scan, invoiceId: e.invoice_id,
       };
     });
     const [customers, sites, bps, items, vcs] = await Promise.all([this.prisma.customer.findMany(), this.prisma.site.findMany(), this.prisma.billingParty.findMany(), this.prisma.item.findMany(), this.prisma.vehicleClass.findMany()]);
@@ -75,6 +77,26 @@ export class AggregatesService {
     const rows = [...m.values()].sort((a, b) => { for (const k of groupBy) { const c = k === 'date' ? cmp(a.keys[k], b.keys[k]) : cmp(order[k].get(a.keys[k]), order[k].get(b.keys[k])); if (c) return c; } return 0; });
     const total = rows.reduce((t, r) => ({ tripCount: t.tripCount + r.tripCount, amount: t.amount + r.amount, priceMissingCount: t.priceMissingCount + r.priceMissingCount }), { tripCount: 0, amount: 0, priceMissingCount: 0 });
     return { rows, total };
+  }
+  /** 集計の1行に入った便（FR-AGG-04）。日報・伝票・サイン・請求書へたどる。キーは集計の keys と同じ（現場なしは空） */
+  async trips(query: Record<string, unknown>) {
+    const q = parse(z.object({
+      from: zDate, to: zDate, customerId: zUuid.optional(), billingPartyId: zUuid.optional(),
+      date: zDate.optional(), customer: zUuid.optional(), site: z.union([zUuid, z.literal('')]).optional(), billingParty: z.union([zUuid, z.literal('')]).optional(), item: zUuid.optional(), vehicleClass: zUuid.optional(),
+    }), query);
+    const { facts, names } = await this.facts(q.from, q.to);
+    const want: Partial<Record<Key, string>> = { date: q.date, customer: q.customer ?? q.customerId, site: q.site, billingParty: q.billingParty ?? q.billingPartyId, item: q.item, vehicleClass: q.vehicleClass };
+    const hit = facts.filter((f) => KEYS.every((k) => want[k] === undefined || this.keyOf(f, k) === want[k])).sort((a, b) => a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
+    const MAX = 2000;
+    return {
+      total: hit.length, truncated: hit.length > MAX,
+      items: hit.slice(0, MAX).map((f) => ({
+        id: f.id, date: f.date, time: f.time, customerName: names.customer.get(f.customerId) ?? '', siteName: f.siteId ? names.site.get(f.siteId) ?? null : null, vehicleNo: f.vehicleNo,
+        itemName: names.item.get(f.itemId) ?? '', vehicleClassName: names.vehicleClass.get(f.vehicleClassId) ?? '', markSymbol: f.markSymbol, unitPrice: f.unitPrice,
+        billingPartyName: f.billingPartyId ? names.billingParty.get(f.billingPartyId) ?? null : null,
+        slipId: f.slipId, slipNo: f.slipNo, slipStatus: f.slipStatus, hasScan: f.hasScan, invoiceId: f.invoiceId, invoiceNo: f.invoiceNo,
+      })),
+    };
   }
   private query(q: Record<string, unknown>) {
     return parse(z.object({
@@ -164,6 +186,7 @@ export class AggregatesController {
   constructor(private readonly s: AggregatesService) {}
   @Get('dashboard') @Roles('OFFICE', 'ADMIN') dashboard() { return this.s.dashboard(); }
   @Get('aggregates') @Roles('OFFICE', 'ADMIN') aggregate(@Query() q: Record<string, unknown>) { return this.s.aggregate(q); }
+  @Get('aggregates/trips') @Roles('OFFICE', 'ADMIN') trips(@Query() q: Record<string, unknown>) { return this.s.trips(q); }
   @Get('aggregates/export') @Roles('OFFICE', 'ADMIN') export(@Query() q: Record<string, unknown>) { return this.s.export(q); }
 }
 

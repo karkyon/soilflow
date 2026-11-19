@@ -52,7 +52,7 @@ export default function FreeeRegistrationsPage() {
               <Td>{r.billingPartyName}<div className="text-xs text-gray-600">→ {r.freeePartnerName ?? <span className="text-warn">未対応付け</span>}</div></Td>
               <Td className="num">{jdateShort(r.issueDate)}</Td><Td className="text-right num">{yen(r.total)}</Td><Td className="text-xs">{ACTION[r.action]}</Td>
               <Td><StatusPill map={FREEE_STATUS} value={r.status} />{r.reasons.map((x) => <div key={x.code + x.message} className="mt-0.5 text-xs text-warn">{x.message}</div>)}{r.status === 'ERROR' && r.lastErrorMessage && <div className="text-xs text-err">{r.lastErrorMessage}</div>}</Td>
-              <Td className="text-xs">{r.dealId ? <>取引 {r.dealId}<br />{jdatetime(r.registeredAt)}</> : '—'}</Td>
+              <Td className="text-xs">{r.dealId ? <>{r.freeeDealUrl ? <a className="text-info hover:underline" href={r.freeeDealUrl} target="_blank" rel="noopener noreferrer">取引 {r.dealId} ↗</a> : <>取引 {r.dealId}</>}<br />{jdatetime(r.registeredAt)}</> : '—'}</Td>
               <Td><div className="flex gap-1"><Button size="sm" onClick={() => setPv(r)}>送る内容</Button>
                 {admin && r.status === 'ERROR' && <Button size="sm" onClick={async () => { try { await api.post(`/freee/registrations/${r.id}/retry`); toast('再登録しました'); } catch (e) { toast(errMsg(e), 'err'); } refresh(); }}>再登録</Button>}
                 {r.reasons.some((x) => x.code === 'PARTNER_UNMAPPED') && <Link href="/office/freee/partners/" className="text-xs text-info hover:underline">取引先へ</Link>}

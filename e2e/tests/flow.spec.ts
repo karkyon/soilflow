@@ -1,6 +1,6 @@
 /* E2E-01〜08（15 2.5）。受付 → 伝票・サイン → 紙伝票・スキャン → 締め → 確認 → メール → freee → 取消して再発行 → オフライン */
 import { expect, Page, test } from '@playwright/test';
-import { expectPdfOpened, lastMonth, login, newUser, toast } from './helpers';
+import { expectPdfOpened, lastMonth, login, newUser, state, toast } from './helpers';
 
 test.describe.configure({ mode: 'serial' });
 
@@ -162,7 +162,7 @@ test('E2E-06 管理者：freee と連携 → 要対応の対応付け → 登録
   await toast(page, '2 件を freee に登録しました');
   await page.getByRole('button', { name: /^登録済/ }).click();
   await expect(page.locator('tbody tr')).toHaveCount(2);
-  await expect(page.locator('tbody tr').first().getByText(/取引 \d+/)).toBeVisible();
+  await expect(page.locator('tbody tr').first().getByRole('link', { name: /取引 \d+/ })).toHaveAttribute('target', '_blank'); // FR-FRE-21
 });
 
 test('E2E-07 取消して再発行', async ({ page }) => {
@@ -180,6 +180,25 @@ test('E2E-07 取消して再発行', async ({ page }) => {
   await page.getByRole('link', { name: '元の請求書' }).click();
   await expect(page.getByText(/取消（/)).toBeVisible();
   await expect(page.getByText('単価の誤り')).toBeVisible();
+});
+
+test('E2E-09 集計 → 元の便 → その日の日報（FR-AGG-04）', async ({ page }) => {
+  const { lastMonthDate } = state();
+  await login(page, 'office', /\/office\/$/);
+  await page.goto('/office/aggregates/');
+  const dates = page.locator('input[type=date]');
+  await dates.nth(0).fill(`${lastMonthDate.slice(0, 7)}-01`);
+  await dates.nth(1).fill(lastMonthDate);
+  const r = page.locator('tbody tr').filter({ hasText: 'かや工業' }).first();
+  await expect(r).toBeVisible();
+  await r.click();
+  const d = page.getByRole('dialog');
+  await expect(d.getByText(/^3 台/)).toBeVisible();
+  await expect(d.locator('tbody tr')).toHaveCount(3);
+  await expect(d.getByRole('link', { name: /^SF-/ }).first()).toBeVisible();
+  await d.getByRole('link', { name: lastMonthDate }).first().click();
+  await expect(page).toHaveURL(new RegExp(`/office/report/\\?date=${lastMonthDate}`));
+  await expect(page.getByRole('button', { name: '1234', exact: true })).toBeVisible();
 });
 
 test('E2E-08 オフラインの表示（通信を切る）', async ({ browser }) => {
