@@ -1,5 +1,5 @@
 # Cloud Run 用（12 環境・インフラ設計書）。リポジトリのルートで：docker build -f apps/api/Dockerfile -t soilflow-api .
-FROM node:22-bookworm-slim
+FROM node:26-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends fonts-noto-cjk ca-certificates && rm -rf /var/lib/apt/lists/* && corepack enable
 WORKDIR /app
 COPY . .
