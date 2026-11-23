@@ -10,7 +10,7 @@
     "test": "node -e \"require('./dist/index.js')\""
   },
   "dependencies": {
-    "pdfmake": "^0.2.23"
+    "pdfmake": "^0.3.14"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
